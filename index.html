@@ -681,6 +681,9 @@ function setSyncStatus(mode) {
 
 /* ─── BACKEND: Google Apps Script (cloud) or localStorage (fallback) ─── */
 function makeCloudBackend() {
+  const POLL_MS = 8000, POLL_MAX_MS = 60000;   // 기본 8초, 연속 실패 시 최대 60초까지
+  let inFlight = null, queued = false, failStreak = 0;
+
   async function post(action, payload) {
     const res = await fetch(APPS_SCRIPT_URL, {
       method: "POST",
@@ -694,21 +697,48 @@ function makeCloudBackend() {
     if (data && data.ok === false) throw new Error(data.error || "서버 오류");
     return data;
   }
-  async function refresh() {
+  async function doRefresh() {
     try {
       const res = await fetch(APPS_SCRIPT_URL + "?action=list&t=" + Date.now());
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
       applyOrdersSnapshot(data.orders || []);
+      failStreak = 0;
       setSyncStatus("cloud");
     } catch (e) {
       console.error("cloud refresh failed", e);
+      failStreak++;
       setSyncStatus("error");
     }
   }
+
+  /* 앞 요청이 끝나기 전에는 새로 보내지 않는다.
+     Apps Script가 간헐적으로 15~45초까지 느려지므로, 그대로 두면 요청이 쌓여
+     실행 한도를 갉아먹고 오래된 응답이 최신 상태를 덮어쓴다.
+     진행 중에 요청이 겹치면 끝난 뒤 한 번만 더 돌린다(최신 상태 보장). */
+  function refresh() {
+    if (inFlight) { queued = true; return inFlight; }
+    inFlight = doRefresh().finally(() => {
+      inFlight = null;
+      if (queued) { queued = false; refresh(); }
+    });
+    return inFlight;
+  }
+
+  /* 응답이 끝난 뒤부터 다음 주기를 센다. 실패가 이어지면 간격을 두 배씩 늘리고,
+     한 번이라도 성공하면 기본 간격으로 되돌린다. */
+  async function startPolling() {
+    for (;;) {
+      const wait = Math.min(POLL_MS * Math.pow(2, failStreak), POLL_MAX_MS);
+      await new Promise(r => setTimeout(r, wait));
+      if (document.visibilityState === "visible") await refresh();
+    }
+  }
+
   return {
     cloud: true,
     refresh,
+    startPolling,
     add(order)         { return post("add", order).then(refresh); },
     update(id, fields) { return post("update", { id, fields }).then(refresh); },
     clearAll()         { return post("clear", {}).then(refresh); },
@@ -1222,8 +1252,9 @@ updateKNavBadge();
 if (Backend.cloud) {
   setSyncStatus("syncing");
   Backend.refresh();
-  // Poll for changes from other devices — only while the tab is visible (saves quota)
-  setInterval(() => { if (document.visibilityState === "visible") Backend.refresh(); }, 4000);
+  // 다른 기기의 변경을 따라잡는 폴링. 화면이 켜져 있을 때만 돌고,
+  // 앞 요청이 끝난 뒤에 다음 주기를 세므로 느려져도 요청이 쌓이지 않는다.
+  Backend.startPolling();
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") Backend.refresh();
   });
