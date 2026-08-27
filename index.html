@@ -611,7 +611,7 @@ const MENU = [
   /* HEALTHY SMOOTHIE */
   { id:34, name:"케일바나나주스",       price:4500, hasTemp:false, cat:"healthy" },
   /* DESSERT */
-  { id:35, name:"꾸로플(허니호떡)",     price:1000, hasTemp:false, cat:"dessert" },
+  { id:35, name:"꾸로플",               price:1000, hasTemp:false, cat:"dessert" },
   /* OPTION */
   { id:36, name:"샷 추가",              price:500,  hasTemp:false, cat:"option" },
   { id:37, name:"오트밀크 변경",        price:500,  hasTemp:false, cat:"option" },
@@ -689,7 +689,10 @@ function makeCloudBackend() {
       body: JSON.stringify({ action, payload })
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
-    return res.json();
+    const data = await res.json();
+    // 서버가 200으로 응답해도 본문에 ok:false 면 실패로 취급한다
+    if (data && data.ok === false) throw new Error(data.error || "서버 오류");
+    return data;
   }
   async function refresh() {
     try {
@@ -816,7 +819,7 @@ function renderMenu() {
       card.innerHTML = `
         <div class="card-top">
           <div><div class="item-en">${item.name}${tagHTML}</div></div>
-          <div class="item-prc">${item.price.toLocaleString()}원</div>
+          <div class="item-prc">${item.price.toLocaleString("ko-KR")}원</div>
         </div>
         ${tempHTML}
         <div class="card-btm">
@@ -861,7 +864,7 @@ function renderCart() {
   const totalQty  = cart.reduce((s, c) => s + c.qty, 0);
   const totalPrc  = cart.reduce((s, c) => s + c.price * c.qty, 0);
   document.getElementById("cartCnt").textContent = totalQty;
-  document.getElementById("cartAmt").textContent = `${totalPrc.toLocaleString()}원`;
+  document.getElementById("cartAmt").textContent = `${totalPrc.toLocaleString("ko-KR")}원`;
   document.getElementById("orderBtn").disabled = cart.length === 0;
   const body = document.getElementById("cartBody");
   if (!cartOpen) { body.innerHTML = ""; return; }
@@ -872,7 +875,7 @@ function renderCart() {
         return `<div class="cart-item">
           <div><div class="cart-item-name">${c.name}</div><div class="cart-item-sub">${tl}${tl?" · ":""}수량 ${c.qty}</div></div>
           <div style="display:flex;align-items:center;gap:6px">
-            <span class="cart-item-price">${(c.price*c.qty).toLocaleString()}원</span>
+            <span class="cart-item-price">${(c.price*c.qty).toLocaleString("ko-KR")}원</span>
             <button class="cart-del" onclick="removeCartItem(${i})">✕</button>
           </div>
         </div>`;
@@ -885,8 +888,9 @@ function toggleCart() {
   renderCart();
 }
 
-function submitOrder() {
-  if (!cart.length) return;
+let submitting = false;
+async function submitOrder() {
+  if (!cart.length || submitting) return;
   const order = {
     customerNumber: custNum,
     timestamp: new Date().toISOString(),
@@ -898,8 +902,20 @@ function submitOrder() {
     total: cart.reduce((s, c) => s + c.price * c.qty, 0),
     orderStatus: "pending"
   };
-  Backend.add(order).catch(err => { console.error(err); showToast("⚠️ 주문 저장 실패 — 연결을 확인해 주세요"); });
-  const n = custNum; cart = []; renderCart();
+  // 저장이 끝날 때까지 기다린다. 실패하면 장바구니를 그대로 두어 다시 시도할 수 있게 한다
+  submitting = true;
+  const btn = document.getElementById("orderBtn");
+  btn.disabled = true; btn.textContent = "저장 중…";
+  try {
+    await Backend.add(order);
+  } catch (err) {
+    console.error(err);
+    submitting = false; btn.textContent = "주문하기"; renderCart();
+    showToast("⚠️ 저장 실패 — 주문이 남아 있습니다. 다시 눌러 주세요");
+    return;
+  }
+  const n = custNum;
+  cart = []; submitting = false; btn.textContent = "주문하기"; renderCart();
   showToast(`손님 #${n} 주문 완료! ✓`);
   setTimeout(() => {
     custNum = null;
@@ -1065,7 +1081,7 @@ function renderSoldBreakdown(orders, df) {
       <td class="sold-rank">${i + 1}</td>
       <td class="sold-name">${r.name}${temp}</td>
       <td class="sold-qty">${r.qty}</td>
-      <td class="sold-rev">${r.revenue.toLocaleString()}원</td>
+      <td class="sold-rev">${r.revenue.toLocaleString("ko-KR")}원</td>
     </tr>`;
   }).join("");
   wrap.innerHTML = `<div class="sold-card">
@@ -1078,7 +1094,7 @@ function renderSoldBreakdown(orders, df) {
       <tfoot><tr class="sold-foot">
         <td></td><td>합계 · ${rows.length}종</td>
         <td class="sold-qty">${totalQty}</td>
-        <td class="sold-rev">${totalRev.toLocaleString()}원</td>
+        <td class="sold-rev">${totalRev.toLocaleString("ko-KR")}원</td>
       </tr></tfoot>
     </table>
   </div>`;
@@ -1115,10 +1131,10 @@ function renderHistory() {
   const avg  = dateSet.length ? Math.round(rev/dateSet.length) : 0;
   document.getElementById("summaryRow").innerHTML = `
     <div class="sum-card"><div class="sum-lbl">총 주문</div><div class="sum-val purple">${dateSet.length}</div></div>
-    <div class="sum-card"><div class="sum-lbl">매출</div><div class="sum-val green">${rev.toLocaleString()}원</div></div>
+    <div class="sum-card"><div class="sum-lbl">매출</div><div class="sum-val green">${rev.toLocaleString("ko-KR")}원</div></div>
     <div class="sum-card"><div class="sum-lbl">완료</div><div class="sum-val green">${done}</div></div>
     <div class="sum-card"><div class="sum-lbl">대기</div><div class="sum-val orange">${pend}</div></div>
-    <div class="sum-card"><div class="sum-lbl">평균</div><div class="sum-val blue">${avg.toLocaleString()}원</div></div>`;
+    <div class="sum-card"><div class="sum-lbl">평균</div><div class="sum-val blue">${avg.toLocaleString("ko-KR")}원</div></div>`;
 
   const hb = document.getElementById("hHeaderBadge");
   if (hb) hb.textContent = `총 ${dateSet.length}건`;
@@ -1158,7 +1174,7 @@ function renderHistory() {
         <td><span class="t-chip ${tc}">${tl}</span></td>
         <td>${item.qty}</td>
         <td>${item.status==="completed"?`<span class="item-done-txt">✓ 완료</span>`:`<span class="item-pending-txt">⏳ 대기</span>`}</td>
-        <td class="td-sub">${(item.price*item.qty).toLocaleString()}원</td>
+        <td class="td-sub">${(item.price*item.qty).toLocaleString("ko-KR")}원</td>
       </tr>`;
     }).join("");
     return `
@@ -1167,7 +1183,7 @@ function renderHistory() {
           <div class="h-dot ${sc}"></div>
           <div><div class="h-cust-num">👤 손님 #${order.customerNumber}</div><div class="h-time">${t}</div></div>
           <span class="h-status-chip ${sc}">${sl}</span>
-          <div class="h-total">${order.total.toLocaleString()}원</div>
+          <div class="h-total">${order.total.toLocaleString("ko-KR")}원</div>
           <span class="h-expand">${isOpen?"▲":"▼"}</span>
         </div>
         <div class="hist-detail ${isOpen?"open":""}">
