@@ -352,11 +352,88 @@
       color: #374151; cursor: pointer;
     }
     .clear-hist-btn {
-      margin-left: auto; padding: 6px 12px; background: #EDE9FE;
+      padding: 6px 12px; background: #EDE9FE;
       border: none; border-radius: 8px;
       color: #7C3AED; font-size: 0.8rem; font-weight: 700; cursor: pointer;
     }
     .clear-hist-btn:hover { background: #DDD6FE; }
+    .filt-actions {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto;
+    }
+    .pdf-btn {
+      padding: 6px 12px; background: #16A34A; border: none; border-radius: 8px;
+      color: #fff; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+    }
+    .pdf-btn:hover:not(:disabled) { background: #15803D; }
+    .pdf-btn:disabled { background: #D1D5DB; color: #9CA3AF; cursor: default; }
+
+    /* ===== 월간 매출 PDF 시트 (화면 밖에서 그려서 캡처) ===== */
+    #pdfSheet { position: fixed; left: -20000px; top: 0; z-index: -1; }
+    .pdf-page {
+      width: 794px; min-height: 1080px; padding: 30px 34px 26px;
+      background: #fff; color: #1F2937;
+      font-family: -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif;
+    }
+    .pdf-head {
+      width: 100%; border-collapse: collapse;
+      background: #1B4332; border-radius: 10px;
+    }
+    .pdf-head td { padding: 15px 20px; vertical-align: middle; }
+    .pdf-brand { font-size: 19px; font-weight: 800; color: #fff; letter-spacing: 0.5px; }
+    .pdf-sub   { font-size: 11px; color: #A7F3D0; margin-top: 4px; }
+    .pdf-period     { font-size: 21px; font-weight: 800; color: #fff; text-align: right; }
+    .pdf-period-sub { font-size: 11px; color: #A7F3D0; text-align: right; margin-top: 4px; }
+    .pdf-total {
+      width: 100%; border-collapse: collapse; margin-top: 13px;
+      background: #ECFDF5; border: 2px solid #A7F3D0; border-radius: 10px;
+    }
+    .pdf-total td { padding: 12px 20px; vertical-align: middle; }
+    .pdf-total-lbl { font-size: 12px; font-weight: 800; color: #047857; letter-spacing: 1px; }
+    .pdf-total-sub { font-size: 10px; color: #6B7280; margin-top: 3px; }
+    .pdf-total-val { font-size: 28px; font-weight: 800; color: #15803D; text-align: right; }
+    .pdf-kpi { width: 100%; border-collapse: collapse; margin-top: 12px; border: 1px solid #E5E7EB; }
+    .pdf-kpi td { width: 20%; padding: 10px 6px; text-align: center; border-left: 1px solid #E5E7EB; }
+    .pdf-kpi td:first-child { border-left: none; }
+    .pdf-kpi-l { font-size: 10px; font-weight: 700; color: #9CA3AF; letter-spacing: 0.4px; }
+    .pdf-kpi-v { font-size: 16px; font-weight: 800; color: #1F2937; margin-top: 4px; }
+    .pdf-cols { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    .pdf-cols td { vertical-align: top; }
+    .pdf-sec {
+      font-size: 13px; font-weight: 800; color: #1B4332;
+      border-left: 4px solid #16A34A; padding-left: 8px; margin-bottom: 7px;
+    }
+    .pdf-tbl { width: 100%; border-collapse: collapse; }
+    .pdf-tbl th {
+      background: #F3F4F6; font-size: 10px; font-weight: 700; color: #6B7280;
+      padding: 6px 7px; text-align: left; border-bottom: 1px solid #E5E7EB;
+    }
+    .pdf-tbl td { font-size: 11px; padding: 5px 7px; border-bottom: 1px solid #F3F4F6; }
+    .pdf-tbl tfoot td {
+      font-weight: 800; background: #F9FAFB;
+      border-top: 2px solid #D1D5DB; border-bottom: none;
+    }
+    .pdf-r    { text-align: right; }
+    .pdf-c    { text-align: center; }
+    .pdf-rank { color: #9CA3AF; font-weight: 700; }
+    .pdf-rev  { color: #15803D; font-weight: 700; text-align: right; }
+    .pdf-temp { font-size: 9px; font-weight: 700; color: #9CA3AF; }
+    .pdf-note { font-size: 10px; color: #9CA3AF; margin-top: 6px; }
+    .pdf-foot {
+      margin-top: 18px; padding-top: 10px; border-top: 1px solid #E5E7EB;
+      font-size: 10px; color: #9CA3AF; text-align: center;
+    }
+    /* html2pdf 를 불러오지 못했을 때의 대체 경로: 브라우저 인쇄 → PDF로 저장.
+       보고서를 인쇄할 때만 켜지므로 평소 인쇄에는 영향을 주지 않는다 */
+    @media print {
+      body.printing-report { background: #fff; }
+      body.printing-report > *:not(#pdfSheet) { display: none !important; }
+      body.printing-report #pdfSheet {
+        position: static !important; left: auto !important; z-index: auto !important;
+      }
+      body.printing-report .pdf-page {
+        width: 100% !important; min-height: 0 !important; padding: 0 !important;
+      }
+    }
     .order-list { display: flex; flex-direction: column; gap: 10px; }
     .hist-row {
       background: #fff; border-radius: 12px;
@@ -551,7 +628,14 @@
           <option value="oldest">오래된순</option>
           <option value="highest">금액 높은순</option>
         </select>
-        <button class="clear-hist-btn" onclick="clearHistory()">🗑 전체 삭제</button>
+        <div class="filt-actions">
+          <span class="filt-lbl">📄 월간:</span>
+          <select class="filt-sel" id="fMonth">
+            <option value="">—</option>
+          </select>
+          <button class="pdf-btn" id="pdfBtn" onclick="downloadMonthPdf()">PDF로 다운받기</button>
+          <button class="clear-hist-btn" onclick="clearHistory()">🗑 전체 삭제</button>
+        </div>
       </div>
       <div id="soldBreakdown"></div>
       <div class="order-list" id="orderList"></div>
@@ -575,6 +659,9 @@
     <span class="nav-label">내역</span>
   </button>
 </nav>
+
+<!-- 월간 매출 PDF를 그렸다가 캡처하는 자리 (화면에는 보이지 않음) -->
+<div id="pdfSheet" aria-hidden="true"></div>
 
 <div class="toast" id="toast"></div>
 
@@ -1200,6 +1287,16 @@ function renderHistory() {
   dateEl.innerHTML = `<option value="all">전체 날짜</option>` +
     days.map(d => `<option value="${d}"${df === d ? " selected" : ""}>${dayLabel(d)}</option>`).join("");
 
+  // Month options for the PDF export; follows the day filter when one is picked
+  const monEl  = document.getElementById("fMonth");
+  const months = [...new Set(allOrders.map(o => monthKey(o.timestamp)))].sort((a, b) => b.localeCompare(a));
+  let mf = df !== "all" ? df.slice(0, 7) : monEl.value;
+  if (!months.includes(mf)) mf = months[0] || "";
+  monEl.innerHTML = months.length
+    ? months.map(k => `<option value="${k}"${k === mf ? " selected" : ""}>${monthLabel(k)}</option>`).join("")
+    : `<option value="">—</option>`;
+  document.getElementById("pdfBtn").disabled = !months.length;
+
   // Customer filter options
   const custEl  = document.getElementById("fCust");
   const curCust = custEl.value;
@@ -1289,6 +1386,223 @@ function renderHistory() {
 function hToggle(id) {
   hExpanded.has(id) ? hExpanded.delete(id) : hExpanded.add(id);
   renderHistory();
+}
+
+/* ══════════ 월간 매출 PDF ══════════ */
+/* Local YYYY-MM key for an ISO timestamp (groups orders by calendar month) */
+function monthKey(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+function monthLabel(key) {
+  const [y, m] = key.split("-").map(Number);
+  return `${y}년 ${m}월`;
+}
+/* 일자별 표에 쓰는 짧은 날짜, 예: "8/27 (목)" */
+function shortDay(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  const w = ["일","월","화","수","목","금","토"][new Date(y, m - 1, d).getDay()];
+  return `${m}/${d} (${w})`;
+}
+
+/* 한 달치 주문을 일자별·메뉴별로 집계한다 */
+function monthStats(mk) {
+  const orders = getOrders().filter(o => monthKey(o.timestamp) === mk);
+  const dayMap = {}, menuMap = {};
+  orders.forEach(o => {
+    const dk = dayKey(o.timestamp);
+    const d  = dayMap[dk] || (dayMap[dk] = { key: dk, cnt: 0, qty: 0, rev: 0 });
+    d.cnt++; d.rev += o.total;
+    o.items.forEach(it => {
+      d.qty += it.qty;
+      const r = menuMap[it.name] || (menuMap[it.name] = { name: it.name, qty: 0, rev: 0, ice: 0, hot: 0 });
+      r.qty += it.qty;
+      r.rev += it.price * it.qty;
+      if (it.temp === "ice")      r.ice += it.qty;
+      else if (it.temp === "hot") r.hot += it.qty;
+    });
+  });
+  const days  = Object.values(dayMap).sort((a, b) => a.key.localeCompare(b.key));
+  const menus = Object.values(menuMap).sort((a, b) => b.rev - a.rev || b.qty - a.qty);
+  return {
+    orders, days, menus,
+    totalRev: orders.reduce((s, o) => s + o.total, 0),
+    totalQty: menus.reduce((s, r) => s + r.qty, 0),
+    done:     orders.filter(o => o.orderStatus === "completed").length,
+  };
+}
+
+/* A4 한 장짜리 월간 매출 보고서 HTML */
+function buildMonthReport(mk) {
+  const s     = monthStats(mk);
+  const money = n => `${n.toLocaleString("ko-KR")}원`;
+  const [y, m] = mk.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const madeAt  = new Date().toLocaleString("ko-KR",
+    { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const avgDay  = s.days.length ? Math.round(s.totalRev / s.days.length) : 0;
+  const avgOrd  = s.orders.length ? Math.round(s.totalRev / s.orders.length) : 0;
+  const empty   = txt => `<tr><td colspan="4" class="pdf-c" style="color:#9CA3AF;padding:16px">${txt}</td></tr>`;
+
+  const dayRows = s.days.map(d => `<tr>
+        <td>${shortDay(d.key)}</td>
+        <td class="pdf-c">${d.cnt}</td>
+        <td class="pdf-c">${d.qty}</td>
+        <td class="pdf-rev">${money(d.rev)}</td>
+      </tr>`).join("") || empty("해당 월의 판매 내역이 없습니다");
+
+  const menuRows = s.menus.map((r, i) => {
+    const bits = [];
+    if (r.ice) bits.push(`ICE ${r.ice}`);
+    if (r.hot) bits.push(`HOT ${r.hot}`);
+    const temp = bits.length ? `<br><span class="pdf-temp">${bits.join(" · ")}</span>` : "";
+    return `<tr>
+        <td class="pdf-rank">${i + 1}</td>
+        <td>${r.name}${temp}</td>
+        <td class="pdf-c">${r.qty}</td>
+        <td class="pdf-rev">${money(r.rev)}</td>
+      </tr>`;
+  }).join("") || empty("해당 월의 판매 내역이 없습니다");
+
+  return `<div class="pdf-page">
+    <table class="pdf-head"><tr>
+      <td>
+        <div class="pdf-brand">CAFE 대연마루</div>
+        <div class="pdf-sub">월간 매출 보고서 · Monthly Sales Report</div>
+      </td>
+      <td>
+        <div class="pdf-period">${monthLabel(mk)}</div>
+        <div class="pdf-period-sub">${y}. ${m}. 1. ~ ${y}. ${m}. ${lastDay}.</div>
+      </td>
+    </tr></table>
+
+    <table class="pdf-total"><tr>
+      <td>
+        <div class="pdf-total-lbl">총 매출액</div>
+        <div class="pdf-total-sub">${monthLabel(mk)} 전체 주문 합계</div>
+      </td>
+      <td class="pdf-total-val">${money(s.totalRev)}</td>
+    </tr></table>
+
+    <table class="pdf-kpi"><tr>
+      <td><div class="pdf-kpi-l">총 주문</div><div class="pdf-kpi-v">${s.orders.length}건</div></td>
+      <td><div class="pdf-kpi-l">총 판매 수량</div><div class="pdf-kpi-v">${s.totalQty}잔</div></td>
+      <td><div class="pdf-kpi-l">영업일수</div><div class="pdf-kpi-v">${s.days.length}일</div></td>
+      <td><div class="pdf-kpi-l">일평균 매출</div><div class="pdf-kpi-v">${money(avgDay)}</div></td>
+      <td><div class="pdf-kpi-l">건당 평균</div><div class="pdf-kpi-v">${money(avgOrd)}</div></td>
+    </tr></table>
+
+    <table class="pdf-cols"><tr>
+      <td style="width:43%">
+        <div class="pdf-sec">일자별 매출</div>
+        <table class="pdf-tbl">
+          <thead><tr><th>날짜</th><th class="pdf-c">주문</th><th class="pdf-c">수량</th><th class="pdf-r">매출</th></tr></thead>
+          <tbody>${dayRows}</tbody>
+          <tfoot><tr>
+            <td>합계 · ${s.days.length}일</td>
+            <td class="pdf-c">${s.orders.length}</td>
+            <td class="pdf-c">${s.totalQty}</td>
+            <td class="pdf-rev">${money(s.totalRev)}</td>
+          </tr></tfoot>
+        </table>
+        <div class="pdf-note">완료 ${s.done}건 · 미완료 ${s.orders.length - s.done}건</div>
+      </td>
+      <td style="width:4%"></td>
+      <td style="width:53%">
+        <div class="pdf-sec">메뉴별 판매 집계</div>
+        <table class="pdf-tbl">
+          <thead><tr><th>#</th><th>메뉴</th><th class="pdf-c">수량</th><th class="pdf-r">매출</th></tr></thead>
+          <tbody>${menuRows}</tbody>
+          <tfoot><tr>
+            <td></td>
+            <td>합계 · ${s.menus.length}종</td>
+            <td class="pdf-c">${s.totalQty}</td>
+            <td class="pdf-rev">${money(s.totalRev)}</td>
+          </tr></tfoot>
+        </table>
+      </td>
+    </tr></table>
+
+    <div class="pdf-foot">대연마루 주문관리 · ${madeAt} 생성 — 모든 수익금은 교회 헌금으로 사용됩니다</div>
+  </div>`;
+}
+
+/* PDF 라이브러리는 버튼을 처음 누를 때만 CDN에서 불러온다.
+   html2pdf 래퍼는 캡처 영역을 어긋나게 잡아서, html2canvas + jsPDF 를 직접 쓴다. */
+const PDF_LIBS = [
+  "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+];
+let pdfLibPromise = null;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src     = src;
+    s.onload  = resolve;
+    s.onerror = () => reject(new Error(`script load failed: ${src}`));
+    document.head.appendChild(s);
+  });
+}
+function loadPdfLibs() {
+  if (window.html2canvas && window.jspdf) return Promise.resolve();
+  if (pdfLibPromise) return pdfLibPromise;
+  pdfLibPromise = Promise.all(PDF_LIBS.map(loadScript))
+    .then(() => {
+      if (!window.html2canvas || !window.jspdf) throw new Error("pdf libs missing");
+    })
+    .catch(err => { pdfLibPromise = null; throw err; });
+  return pdfLibPromise;
+}
+
+/* 캡처한 캔버스를 A4 폭에 맞춰 넣는다. 한 장을 넘치면 잘라서 다음 장으로 이어 붙인다 */
+function canvasToPdf(canvas, filename) {
+  const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const pw  = pdf.internal.pageSize.getWidth();
+  const ph  = pdf.internal.pageSize.getHeight();
+  const slice = Math.floor(canvas.width * ph / pw);   // 한 장에 들어가는 캔버스 높이(px)
+  for (let y = 0, page = 0; y < canvas.height; y += slice, page++) {
+    const h    = Math.min(slice, canvas.height - y);
+    const part = document.createElement("canvas");
+    part.width = canvas.width;
+    part.height = h;
+    part.getContext("2d").drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
+    if (page) pdf.addPage();
+    pdf.addImage(part.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, pw, pw * h / canvas.width);
+  }
+  pdf.save(filename);
+}
+
+/* 선택한 달의 매출 보고서를 PDF 파일로 내려받는다.
+   CDN을 못 쓰는 상황에서는 인쇄 창(→ PDF로 저장)으로 넘어간다. */
+async function downloadMonthPdf() {
+  const mk = document.getElementById("fMonth").value;
+  if (!mk) { showToast("⚠️ 내보낼 주문 내역이 없습니다"); return; }
+
+  const btn   = document.getElementById("pdfBtn");
+  const sheet = document.getElementById("pdfSheet");
+  const label = btn.textContent;
+  sheet.innerHTML = buildMonthReport(mk);
+  btn.disabled = true;
+  btn.textContent = "⏳ 만드는 중…";
+  try {
+    await loadPdfLibs();
+    const canvas = await window.html2canvas(sheet.firstElementChild, {
+      scale: 2, backgroundColor: "#ffffff", logging: false,
+    });
+    canvasToPdf(canvas, `대연마루_매출_${mk}.pdf`);
+    showToast(`📄 ${monthLabel(mk)} 매출 PDF를 저장했습니다`);
+  } catch (err) {
+    console.error(err);
+    showToast("인쇄 창에서 「PDF로 저장」을 선택해 주세요");
+    setTimeout(() => {
+      document.body.classList.add("printing-report");
+      window.print();
+      document.body.classList.remove("printing-report");
+    }, 500);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
 }
 
 function clearHistory() {
