@@ -628,6 +628,7 @@ const MENU = [
   { id:36, name:"샷 추가",              price:500,  hasTemp:false, cat:"option" },
   { id:37, name:"오트밀크 변경",        price:500,  hasTemp:false, cat:"option" },
   { id:38, name:"디카페인 변경",        price:500,  hasTemp:false, cat:"option" },
+  { id:39, name:"연하게",               price:0,    hasTemp:false, cat:"option" },
 ];
 const CATS = {
   coffee:   { icon:"☕", label:"커피 · Coffee" },
@@ -637,8 +638,11 @@ const CATS = {
   smoothie: { icon:"🥤", label:"스무디 · 쉐이크" },
   healthy:  { icon:"🥬", label:"건강 스무디" },
   dessert:  { icon:"🍯", label:"디저트" },
-  option:   { icon:"➕", label:"옵션 (추가 요금)" },
+  option:   { icon:"➕", label:"옵션 · 요청사항" },
 };
+
+/* 금액 표기. 0원짜리 요청사항은 「무료」로 보여준다 */
+function won(n) { return n ? `${n.toLocaleString("ko-KR")}원` : "무료"; }
 
 let currentTab = "order";
 let custNum    = null;
@@ -866,7 +870,7 @@ function renderMenu() {
       card.innerHTML = `
         <div class="card-top">
           <div><div class="item-en">${item.name}${tagHTML}</div></div>
-          <div class="item-prc">${item.price.toLocaleString("ko-KR")}원</div>
+          <div class="item-prc">${won(item.price)}</div>
         </div>
         ${tempHTML}
         <div class="card-btm">
@@ -922,7 +926,7 @@ function renderCart() {
         return `<div class="cart-item">
           <div><div class="cart-item-name">${c.name}</div><div class="cart-item-sub">${tl}${tl?" · ":""}수량 ${c.qty}</div></div>
           <div style="display:flex;align-items:center;gap:6px">
-            <span class="cart-item-price">${(c.price*c.qty).toLocaleString("ko-KR")}원</span>
+            <span class="cart-item-price">${won(c.price*c.qty)}</span>
             <button class="cart-del" onclick="removeCartItem(${i})">✕</button>
           </div>
         </div>`;
