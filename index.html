@@ -1009,7 +1009,7 @@ function renderKitchen() {
         <span class="k-item-name">${item.name}</span>
         <span class="k-item-qty">×${item.qty}</span>
         <button class="k-del-item" title="이 메뉴만 삭제"
-                onclick="event.stopPropagation();kDeleteItem('${order.id}','${item.itemId}')">✕</button>
+                onclick="event.stopPropagation();deleteOrderItem('${order.id}','${item.itemId}')">✕</button>
       </div>`;
     }).join("");
     const t = new Date(order.timestamp).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
@@ -1019,7 +1019,7 @@ function renderKitchen() {
         <div style="display:flex;align-items:center;gap:8px">
           <span class="k-time">${t}</span>
           <button class="k-del-order" title="주문 전체 삭제"
-                  onclick="event.stopPropagation();kDeleteOrder('${order.id}')">🗑</button>
+                  onclick="event.stopPropagation();deleteOrder('${order.id}')">🗑</button>
           <div class="k-check">${allSel?"✓":""}</div>
         </div>
       </div>
@@ -1028,26 +1028,27 @@ function renderKitchen() {
   }).join("");
 }
 
-/* 잘못 받은 주문 정리 — 주문 통째로 삭제 */
-function kDeleteOrder(orderId) {
+/* 잘못 받은 주문 정리 — 주문 통째로 삭제. 주방·내역 화면이 함께 쓴다 */
+function deleteOrder(orderId) {
   const order = getOrders().find(o => o.id === orderId);
   if (!order) return;
   const list = order.items.map(i => `· ${i.name} ×${i.qty}`).join("\n");
   if (!confirm(`손님 #${order.customerNumber} 주문을 통째로 삭제할까요?\n\n${list}\n합계 ${order.total.toLocaleString("ko-KR")}원\n\n되돌릴 수 없습니다.`)) return;
   order.items.forEach(i => kSelected.delete(`${orderId}::${i.itemId}`));
+  hExpanded.delete(orderId);
   Backend.remove(orderId)
     .then(() => showToast(`손님 #${order.customerNumber} 주문 삭제됨 ✓`))
     .catch(err => { console.error(err); showToast("⚠️ 삭제 실패 — 연결을 확인해 주세요"); });
 }
 
-/* 잘못 받은 주문 정리 — 주문에서 그 메뉴 한 줄만 삭제 */
-function kDeleteItem(orderId, itemId) {
+/* 잘못 받은 주문 정리 — 주문에서 그 메뉴 한 줄만 삭제. 주방·내역 화면이 함께 쓴다 */
+function deleteOrderItem(orderId, itemId) {
   const order = getOrders().find(o => o.id === orderId);
   if (!order) return;
   const item = order.items.find(i => i.itemId === itemId);
   if (!item) return;
   const rest = order.items.filter(i => i.itemId !== itemId);
-  if (!rest.length) return kDeleteOrder(orderId);   // 마지막 한 줄이면 주문 자체를 지운다
+  if (!rest.length) return deleteOrder(orderId);   // 마지막 한 줄이면 주문 자체를 지운다
   if (!confirm(`손님 #${order.customerNumber} 주문에서 「${item.name} ×${item.qty}」을 삭제할까요?\n\n되돌릴 수 없습니다.`)) return;
   kSelected.delete(`${orderId}::${itemId}`);
   const total    = rest.reduce((sum, i) => sum + i.price * i.qty, 0);
@@ -1256,6 +1257,8 @@ function renderHistory() {
         <td>${item.qty}</td>
         <td>${item.status==="completed"?`<span class="item-done-txt">✓ 완료</span>`:`<span class="item-pending-txt">⏳ 대기</span>`}</td>
         <td class="td-sub">${(item.price*item.qty).toLocaleString("ko-KR")}원</td>
+        <td style="text-align:right"><button class="k-del-item" title="이 메뉴만 삭제"
+            onclick="deleteOrderItem('${order.id}','${item.itemId}')">✕</button></td>
       </tr>`;
     }).join("");
     return `
@@ -1265,11 +1268,13 @@ function renderHistory() {
           <div><div class="h-cust-num">👤 손님 #${order.customerNumber}</div><div class="h-time">${t}</div></div>
           <span class="h-status-chip ${sc}">${sl}</span>
           <div class="h-total">${order.total.toLocaleString("ko-KR")}원</div>
+          <button class="k-del-order" title="주문 전체 삭제"
+                  onclick="event.stopPropagation();deleteOrder('${order.id}')">🗑</button>
           <span class="h-expand">${isOpen?"▲":"▼"}</span>
         </div>
         <div class="hist-detail ${isOpen?"open":""}">
           <table class="hist-table">
-            <thead><tr><th>메뉴</th><th>온도</th><th>수량</th><th>상태</th><th style="text-align:right">금액</th></tr></thead>
+            <thead><tr><th>메뉴</th><th>온도</th><th>수량</th><th>상태</th><th style="text-align:right">금액</th><th></th></tr></thead>
             <tbody>${detailRows}</tbody>
           </table>
         </div>
