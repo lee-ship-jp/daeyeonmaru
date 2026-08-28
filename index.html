@@ -303,6 +303,18 @@
       font-size: 0.8rem; font-weight: 700; color: #D97706;
       background: #FFFBEB; padding: 2px 7px; border-radius: 6px;
     }
+    .k-del-order {
+      background: none; border: none; cursor: pointer;
+      font-size: 0.95rem; line-height: 1; padding: 4px 6px;
+      border-radius: 7px; opacity: 0.4; transition: all 0.15s;
+    }
+    .k-del-order:hover { opacity: 1; background: #FEE2E2; }
+    .k-del-item {
+      background: none; border: none; cursor: pointer;
+      color: #D1D5DB; font-size: 0.85rem; font-weight: 700;
+      padding: 2px 6px; border-radius: 5px; transition: all 0.15s;
+    }
+    .k-del-item:hover { color: #EF4444; background: #FEF2F2; }
     .k-empty {
       text-align: center; padding: 70px 20px; color: #9CA3AF;
       grid-column: 1 / -1;
@@ -741,6 +753,7 @@ function makeCloudBackend() {
     startPolling,
     add(order)         { return post("add", order).then(refresh); },
     update(id, fields) { return post("update", { id, fields }).then(refresh); },
+    remove(id)         { return post("delete", { id }).then(refresh); },
     clearAll()         { return post("clear", {}).then(refresh); },
   };
 }
@@ -761,6 +774,10 @@ function makeLocalBackend() {
     update(id, fields) {
       const a = read(); const o = a.find(x => x.id === id);
       if (o) Object.assign(o, fields);
+      write(a); applyOrdersSnapshot(a); return Promise.resolve();
+    },
+    remove(id) {
+      const a = read().filter(x => x.id !== id);
       write(a); applyOrdersSnapshot(a); return Promise.resolve();
     },
     clearAll() { localStorage.removeItem(KEY); localStorage.setItem(UP, Date.now()); applyOrdersSnapshot([]); return Promise.resolve(); }
@@ -991,6 +1008,8 @@ function renderKitchen() {
         <span class="k-temp-tag ${tc}">${tl}</span>
         <span class="k-item-name">${item.name}</span>
         <span class="k-item-qty">×${item.qty}</span>
+        <button class="k-del-item" title="이 메뉴만 삭제"
+                onclick="event.stopPropagation();kDeleteItem('${order.id}','${item.itemId}')">✕</button>
       </div>`;
     }).join("");
     const t = new Date(order.timestamp).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
@@ -999,12 +1018,44 @@ function renderKitchen() {
         <div><div class="k-cust">👤 손님 #${order.customerNumber}</div></div>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="k-time">${t}</span>
+          <button class="k-del-order" title="주문 전체 삭제"
+                  onclick="event.stopPropagation();kDeleteOrder('${order.id}')">🗑</button>
           <div class="k-check">${allSel?"✓":""}</div>
         </div>
       </div>
       <div class="k-card-body">${rows}</div>
     </div>`;
   }).join("");
+}
+
+/* 잘못 받은 주문 정리 — 주문 통째로 삭제 */
+function kDeleteOrder(orderId) {
+  const order = getOrders().find(o => o.id === orderId);
+  if (!order) return;
+  const list = order.items.map(i => `· ${i.name} ×${i.qty}`).join("\n");
+  if (!confirm(`손님 #${order.customerNumber} 주문을 통째로 삭제할까요?\n\n${list}\n합계 ${order.total.toLocaleString("ko-KR")}원\n\n되돌릴 수 없습니다.`)) return;
+  order.items.forEach(i => kSelected.delete(`${orderId}::${i.itemId}`));
+  Backend.remove(orderId)
+    .then(() => showToast(`손님 #${order.customerNumber} 주문 삭제됨 ✓`))
+    .catch(err => { console.error(err); showToast("⚠️ 삭제 실패 — 연결을 확인해 주세요"); });
+}
+
+/* 잘못 받은 주문 정리 — 주문에서 그 메뉴 한 줄만 삭제 */
+function kDeleteItem(orderId, itemId) {
+  const order = getOrders().find(o => o.id === orderId);
+  if (!order) return;
+  const item = order.items.find(i => i.itemId === itemId);
+  if (!item) return;
+  const rest = order.items.filter(i => i.itemId !== itemId);
+  if (!rest.length) return kDeleteOrder(orderId);   // 마지막 한 줄이면 주문 자체를 지운다
+  if (!confirm(`손님 #${order.customerNumber} 주문에서 「${item.name} ×${item.qty}」을 삭제할까요?\n\n되돌릴 수 없습니다.`)) return;
+  kSelected.delete(`${orderId}::${itemId}`);
+  const total    = rest.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const allDone  = rest.every(i => i.status === "completed");
+  const someDone = rest.some(i => i.status === "completed");
+  Backend.update(orderId, { items: rest, total, orderStatus: allDone ? "completed" : someDone ? "partial" : "pending" })
+    .then(() => showToast(`${item.name} 삭제됨 ✓`))
+    .catch(err => { console.error(err); showToast("⚠️ 삭제 실패 — 연결을 확인해 주세요"); });
 }
 
 function kToggle(orderId) {

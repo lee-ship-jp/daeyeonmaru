@@ -8,6 +8,7 @@
  *     GET  ?action=list            → { ok, orders: [...] }
  *     POST { action:"add",    payload: <order> }        → { ok, id }
  *     POST { action:"update", payload: { id, fields } } → { ok }
+ *     POST { action:"delete", payload: { id } }         → { ok }
  *     POST { action:"clear" }                           → { ok }
  *
  * DEPLOY (one time):
@@ -92,6 +93,19 @@ function doPost(e) {
         }
       }
       return json_({ ok: true });
+    }
+
+    if (action === 'delete') {
+      const id = (req.payload || {}).id;
+      const last = sh.getLastRow();
+      var removed = false;
+      if (last >= 2 && id) {
+        const ids = sh.getRange(2, 1, last - 1, 1).getValues();
+        for (let i = 0; i < ids.length; i++) {
+          if (ids[i][0] === id) { sh.deleteRow(i + 2); removed = true; break; }
+        }
+      }
+      return removed ? json_({ ok: true }) : json_({ ok: false, error: 'order not found' });
     }
 
     if (action === 'clear') {
