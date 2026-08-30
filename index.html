@@ -103,8 +103,8 @@
       margin-top: 16px; font-size: 0.72rem; color: #9CA3AF; line-height: 1.5;
     }
     .num-grid {
-      display: grid; grid-template-columns: repeat(6, 1fr);
-      gap: 7px; margin-bottom: 20px;
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      gap: 9px; margin-bottom: 20px;
     }
     .num-btn {
       aspect-ratio: 1; border: 2px solid #E5E7EB;
@@ -114,6 +114,11 @@
     }
     .num-btn:hover  { border-color: #40916C; color: #40916C; background: #F0FDF4; }
     .num-btn.sel    { background: #1B4332; border-color: #1B4332; color: #fff; }
+    .num-btn.sel::after {
+      content: "다음"; display: block;
+      font-size: 0.55rem; font-weight: 700; letter-spacing: 0.02em;
+      opacity: 0.75; margin-top: 2px;
+    }
     .start-btn {
       width: 100%; padding: 14px;
       background: #1B4332; color: #fff;
@@ -556,9 +561,9 @@
     <div class="num-modal-box">
       <div class="logo-icon">☕</div>
       <h2>CAFE 대연마루</h2>
-      <p>손님 번호를 선택해 주세요</p>
+      <p>주문 시작을 누르면 번호가 자동으로 지정됩니다</p>
       <div class="num-grid" id="numGrid"></div>
-      <button class="start-btn" id="startBtn" disabled onclick="startOrder()">주문 시작</button>
+      <button class="start-btn" id="startBtn" onclick="startOrder()">주문 시작</button>
       <div class="num-modal-note">여러분께서 드신 음료의 모든 수익금은<br>교회 헌금으로 사용됩니다. 감사합니다.</div>
     </div>
   </div>
@@ -911,23 +916,45 @@ function switchTab(tab) {
 }
 
 /* ══════════ ORDER SCREEN ══════════ */
-/* Number grid */
+/* Number grid — 1~10번을 순서대로 자동 배정한다 */
+const NUM_MAX  = 10;
+const NEXT_KEY = "maru_next_num";
+let nextNum    = loadNextNum();
+
 const numGrid = document.getElementById("numGrid");
-for (let i = 1; i <= 30; i++) {
+for (let i = 1; i <= NUM_MAX; i++) {
   const b = document.createElement("button");
   b.className = "num-btn"; b.textContent = i;
-  b.onclick = () => pickNum(i, b);
+  b.onclick = () => pickNum(i);
   numGrid.appendChild(b);
 }
+markNext();
 
-function pickNum(n, btn) {
-  custNum = n;
-  document.querySelectorAll(".num-btn").forEach(b => b.classList.remove("sel"));
-  btn.classList.add("sel");
-  document.getElementById("startBtn").disabled = false;
+/* 새로고침해도 순번이 이어지도록 저장해 둔다 */
+function loadNextNum() {
+  const v = parseInt(localStorage.getItem(NEXT_KEY), 10);
+  return (v >= 1 && v <= NUM_MAX) ? v : 1;
+}
+function saveNextNum() {
+  try { localStorage.setItem(NEXT_KEY, nextNum); } catch (e) {}
+}
+
+/* 다음에 나갈 번호를 그리드와 시작 버튼에 표시 */
+function markNext() {
+  document.querySelectorAll(".num-btn").forEach((b, i) => b.classList.toggle("sel", i + 1 === nextNum));
+  const btn = document.getElementById("startBtn");
+  if (btn) btn.textContent = `${nextNum}번으로 주문 시작`;
+}
+
+/* 번호를 눌러 순번을 바꿀 수도 있다(선택 사항) */
+function pickNum(n) {
+  nextNum = n; saveNextNum(); markNext();
 }
 
 function startOrder() {
+  custNum = nextNum;
+  nextNum = nextNum % NUM_MAX + 1;   // 10번 다음은 다시 1번
+  saveNextNum(); markNext();
   document.getElementById("numModal").classList.add("hidden");
   const badge = document.getElementById("customerBadge");
   if (badge) badge.innerHTML = `👤 손님 #${custNum}`;
@@ -986,7 +1013,7 @@ function chQty(id, d) {
 }
 
 function addItem(id) {
-  if (!custNum) { showToast("손님 번호를 먼저 선택해 주세요"); return; }
+  if (!custNum) { showToast("「주문 시작」을 먼저 눌러 주세요"); return; }
   const item = MENU.find(m => m.id === id);
   const temp = item.hasTemp ? tempMap[id] : null;
   const qty  = qtyMap[id];
@@ -1057,8 +1084,7 @@ async function submitOrder() {
   showToast(`손님 #${n} 주문 완료! ✓`);
   setTimeout(() => {
     custNum = null;
-    document.querySelectorAll(".num-btn").forEach(b => b.classList.remove("sel"));
-    document.getElementById("startBtn").disabled = true;
+    markNext();
     document.getElementById("numModal").classList.remove("hidden");
     const badge = document.getElementById("customerBadge");
     if (badge) badge.textContent = "손님 미선택";
