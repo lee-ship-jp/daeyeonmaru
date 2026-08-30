@@ -102,23 +102,28 @@
     .num-modal-note {
       margin-top: 16px; font-size: 0.72rem; color: #9CA3AF; line-height: 1.5;
     }
+    /* 다음 주문 번호 안내 */
+    .next-num-box {
+      background: #F0FDF4; border: 2px solid #B7E4C7;
+      border-radius: 16px; padding: 20px 12px; margin-bottom: 18px;
+    }
+    .next-num-label { display: block; font-size: 0.9rem; font-weight: 700; color: #40916C; margin-bottom: 6px; }
+    .next-num-val   { font-size: 2.9rem; font-weight: 900; color: #1B4332; line-height: 1; }
+    .next-num-suf   { font-size: 1.15rem; font-weight: 800; color: #1B4332; margin-left: 3px; }
+
+    /* 번호 직접 지정(보조) */
+    .num-manual { margin-top: 18px; }
+    .num-manual-label { font-size: 0.72rem; color: #9CA3AF; margin-bottom: 8px; }
     .num-grid {
-      display: grid; grid-template-columns: repeat(5, 1fr);
-      gap: 9px; margin-bottom: 20px;
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
     }
     .num-btn {
-      aspect-ratio: 1; border: 2px solid #E5E7EB;
-      background: #fff; border-radius: 10px;
-      font-size: 0.95rem; font-weight: 700; color: #374151;
+      border: 1px solid #E5E7EB; background: #fff; border-radius: 8px;
+      padding: 7px 0; font-size: 0.82rem; font-weight: 700; color: #6B7280;
       cursor: pointer; transition: all 0.15s;
     }
     .num-btn:hover  { border-color: #40916C; color: #40916C; background: #F0FDF4; }
     .num-btn.sel    { background: #1B4332; border-color: #1B4332; color: #fff; }
-    .num-btn.sel::after {
-      content: "다음"; display: block;
-      font-size: 0.55rem; font-weight: 700; letter-spacing: 0.02em;
-      opacity: 0.75; margin-top: 2px;
-    }
     .start-btn {
       width: 100%; padding: 14px;
       background: #1B4332; color: #fff;
@@ -561,9 +566,16 @@
     <div class="num-modal-box">
       <div class="logo-icon">☕</div>
       <h2>CAFE 대연마루</h2>
-      <p>주문 시작을 누르면 번호가 자동으로 지정됩니다</p>
-      <div class="num-grid" id="numGrid"></div>
+      <p>번호는 1~10번이 순서대로 자동 배정됩니다</p>
+      <div class="next-num-box">
+        <span class="next-num-label">다음 주문은</span>
+        <span class="next-num-val" id="nextNumVal">1</span><span class="next-num-suf">번 입니다</span>
+      </div>
       <button class="start-btn" id="startBtn" onclick="startOrder()">주문 시작</button>
+      <div class="num-manual">
+        <div class="num-manual-label">번호를 직접 바꾸려면 눌러 주세요</div>
+        <div class="num-grid" id="numGrid"></div>
+      </div>
       <div class="num-modal-note">여러분께서 드신 음료의 모든 수익금은<br>교회 헌금으로 사용됩니다. 감사합니다.</div>
     </div>
   </div>
@@ -939,11 +951,11 @@ function saveNextNum() {
   try { localStorage.setItem(NEXT_KEY, nextNum); } catch (e) {}
 }
 
-/* 다음에 나갈 번호를 그리드와 시작 버튼에 표시 */
+/* 다음에 나갈 번호를 안내 문구와 그리드에 표시 */
 function markNext() {
+  const val = document.getElementById("nextNumVal");
+  if (val) val.textContent = nextNum;
   document.querySelectorAll(".num-btn").forEach((b, i) => b.classList.toggle("sel", i + 1 === nextNum));
-  const btn = document.getElementById("startBtn");
-  if (btn) btn.textContent = `${nextNum}번으로 주문 시작`;
 }
 
 /* 번호를 눌러 순번을 바꿀 수도 있다(선택 사항) */
