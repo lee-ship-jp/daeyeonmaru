@@ -104,7 +104,12 @@
       animation: breathe 2.2s ease-in-out infinite;
     }
     @keyframes breathe { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.04); opacity: 0.82; } }
-    .idle-note { margin-top: 36px; font-size: 0.85rem; color: #A98F66; line-height: 1.6; }
+    .idle-note {
+      margin-top: 36px; font-size: 1.2rem; font-weight: 800;
+      color: #F6EFE3; line-height: 1.7;
+      background: rgba(64,145,108,0.3); border: 1.5px solid rgba(183,228,199,0.5);
+      border-radius: 16px; padding: 14px 26px;
+    }
 
     /* ═══ 공용 상단 바 ═══ */
     .ktop {
@@ -320,6 +325,14 @@
     .acct-holder { font-size: 1.05rem; font-weight: 800; color: var(--wood-dark); }
     .acct-raw { margin-top: 10px; font-size: 0.88rem; color: var(--wood-mid); }
     .acct-raw b { font-size: 1rem; color: var(--wood-dark); letter-spacing: 0.5px; }
+    .acct-copy-btn {
+      margin-top: 16px; width: 100%; min-height: 68px;
+      border: none; border-radius: 16px;
+      background: var(--green-dark); color: #fff;
+      font-size: 1.3rem; font-weight: 900;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .acct-copy-btn:active { background: var(--green-deep); }
     .depositor-note {
       background: #FEF3C7; border: 2px solid #FDE68A; border-radius: 16px;
       padding: 14px 16px; text-align: center;
@@ -368,9 +381,9 @@
     .dlg-foot  { display: flex; gap: 10px; margin-top: 24px; }
     .dlg-foot .big-btn { flex: 1; font-size: 1.1rem; }
 
-    /* 토스트 */
+    /* 토스트 — 항상 화면 하단에 고정, 화면 전환 시 hideToast()로 즉시 사라진다 */
     .toast {
-      position: fixed; bottom: 48vh; left: 50%;
+      position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 32px); left: 50%;
       transform: translateX(-50%);
       background: var(--green-deep); color: #fff;
       padding: 12px 26px; border-radius: 999px;
@@ -484,6 +497,7 @@
       <div class="acct-num">301-0383-6883-11</div>
       <div class="acct-holder">예금주 · 기쁜소식부산대연교회</div>
       <div class="acct-raw">계좌번호 원문(하이픈 없이) <b>3010383688311</b></div>
+      <button class="acct-copy-btn" id="acctCopyBtn" onclick="copyAccount()">📋 계좌번호 복사</button>
     </div>
     <div class="depositor-note" id="transferDepositorNote">입금자명에 주문번호 <b>—번</b>을 함께 적어 주세요<br><span style="font-size:0.9rem;font-weight:700">(예: 홍길동—번)</span></div>
     <div class="pay-foot">
@@ -557,6 +571,38 @@ function showToast(msg) {
   el.textContent = msg; el.classList.add("show");
   clearTimeout(showToast._t);
   showToast._t = setTimeout(() => el.classList.remove("show"), 2000);
+}
+function hideToast() {
+  clearTimeout(showToast._t);
+  const el = document.getElementById("toast");
+  el.style.transition = "none";          // 화면 전환 시에는 페이드 없이 즉시 숨김
+  el.classList.remove("show");
+  void el.offsetWidth;                   // 강제 reflow 후 transition 복원
+  el.style.transition = "";
+}
+/* 계좌번호 복사 — 키오스크 웹뷰에서 clipboard API가 막힌 경우 execCommand 폴백 */
+const ACCT_RAW = "3010383688311";
+function copyAccount() {
+  const done = () => showToast("계좌번호가 복사되었습니다 ✓");
+  const failMsg = () => showToast("복사에 실패했습니다 — 화면의 번호를 보고 입력해 주세요");
+  const fallback = () => {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = ACCT_RAW;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;";
+      document.body.appendChild(ta);
+      ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      ok ? done() : failMsg();
+    } catch (e) { failMsg(); }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(ACCT_RAW).then(done).catch(fallback);
+  } else {
+    fallback();
+  }
 }
 /* 확대·길게누르기 메뉴 차단 */
 document.addEventListener("contextmenu", e => e.preventDefault());
@@ -680,6 +726,7 @@ let saving    = false;
 /* ═══════════ 화면 전환 ═══════════ */
 function showScreen(name) {
   screen = name;
+  hideToast();   // 이전 화면의 「담김 ✓」 등이 다음 화면까지 남지 않도록
   document.querySelectorAll(".kscreen").forEach(s => s.classList.remove("active"));
   document.getElementById(`screen-${name}`).classList.add("active");
   armIdleTimer();
@@ -1015,6 +1062,7 @@ function showDone() {
          <div class="acct-num">301-0383-6883-11</div>
          <div class="acct-holder">NH농협 · 예금주 기쁜소식부산대연교회</div>
          <div class="acct-raw">아직 이체 전이라면 지금 보내 주세요 — 입금자명에 <b>${o.customerNumber}번</b></div>
+         <button class="acct-copy-btn" id="doneAcctCopyBtn" onclick="copyAccount()">📋 계좌번호 복사</button>
        </div>`
     : `<div class="depositor-note">💵 카운터에서 현금 ${won(o.total)}을<br>결제해 주세요</div>`;
   const lines = o.items.map(it =>
