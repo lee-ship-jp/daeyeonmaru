@@ -68,7 +68,7 @@ await page.reload();
 await page.waitForSelector("#screen-idle.active");
 await shot("01-대기화면.png");
 
-await page.click("#screen-idle");
+await page.click("#idleStartBtn");       // 첫화면은 「주문 시작」 버튼으로만 시작된다
 await page.waitForSelector("#screen-number.active");
 await shot("02-번호선택.png");
 
@@ -116,7 +116,7 @@ if (o.items[1].name !== "샷 추가" || o.items[1].qty !== 2) fail("샷 추가 �
 /* 주문 후 같은 번호는 「사용 중」 처리 확인 */
 await page.click("#doneHome");
 await page.waitForSelector("#screen-idle.active");
-await page.click("#screen-idle");
+await page.click("#idleStartBtn");
 await page.waitForSelector("#screen-number.active");
 if (!await page.$eval("#num-3", b => b.disabled)) fail("주문 후 3번이 사용 중으로 표시되지 않음");
 
