@@ -529,6 +529,31 @@
     .sold-foot td { font-weight: 800; color: #1F2937; border-top: 2px solid #EDE9FE; background: #FAF5FF; }
     .sold-empty { text-align: center; color: #9CA3AF; padding: 14px; font-size: 0.85rem; }
 
+    /* ===== 키오스크 주문 배지·결제 표시 (주방·내역 공용) ===== */
+    .src-badge {
+      display: inline-block; margin-left: 6px; vertical-align: 2px;
+      font-size: 0.64rem; font-weight: 800; color: #2D6A4F;
+      background: #D8F3DC; border: 1px solid #95D5B2;
+      padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+    }
+    .pay-line {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .pay-method { font-size: 0.72rem; font-weight: 700; color: #6B7280; white-space: nowrap; }
+    .pay-chip {
+      font-size: 0.68rem; font-weight: 800; padding: 2px 8px;
+      border-radius: 999px; white-space: nowrap;
+    }
+    .pay-chip.unpaid { background: #FEE2E2; color: #DC2626; }
+    .pay-chip.paid   { background: #DCFCE7; color: #16A34A; }
+    .pay-confirm-btn {
+      padding: 3px 10px; background: #16A34A; color: #fff;
+      border: none; border-radius: 7px;
+      font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap;
+    }
+    .pay-confirm-btn:hover { background: #15803D; }
+
     /* ===== TOAST ===== */
     .toast {
       position: fixed; top: 66px; left: 50%;
@@ -683,67 +708,9 @@
 <div class="toast" id="toast"></div>
 
 <!-- ═══════════════ JAVASCRIPT ═══════════════ -->
+<!-- 메뉴 데이터(MENU·CATS)는 키오스크와 공유하는 menu.js에서 읽는다 -->
+<script src="menu.js"></script>
 <script>
-/* ─── DATA ─── */
-const MENU = [
-  /* COFFEE */
-  { id:1,  name:"아메리카노",           price:2500, hasTemp:true,  cat:"coffee" },
-  { id:2,  name:"카페라떼",             price:3500, hasTemp:true,  cat:"coffee" },
-  { id:3,  name:"마루라떼",             price:4000, hasTemp:true,  cat:"coffee", tag:"Signature" },
-  { id:4,  name:"바닐라라떼",           price:4000, hasTemp:true,  cat:"coffee" },
-  { id:5,  name:"오트라떼",             price:4000, hasTemp:true,  cat:"coffee" },
-  /* LATTE */
-  { id:6,  name:"초코라떼",             price:4000, hasTemp:true,  cat:"latte" },
-  { id:7,  name:"말차라떼",             price:4000, hasTemp:true,  cat:"latte" },
-  { id:8,  name:"딸기라떼",             price:4000, hasTemp:false, cat:"latte", tag:"ICE만" },
-  { id:9,  name:"곡물라떼",             price:3500, hasTemp:true,  cat:"latte" },
-  /* ADE & JUICE */
-  { id:10, name:"레몬에이드",           price:3000, hasTemp:false, cat:"ade" },
-  { id:11, name:"자몽에이드",           price:3500, hasTemp:false, cat:"ade" },
-  { id:12, name:"청포도에이드",         price:3500, hasTemp:false, cat:"ade" },
-  { id:13, name:"유자에이드",           price:3500, hasTemp:false, cat:"ade" },
-  /* TEA */
-  { id:14, name:"꿀레몬차",             price:3500, hasTemp:true,  cat:"tea" },
-  { id:15, name:"꿀자몽차",             price:3500, hasTemp:true,  cat:"tea" },
-  { id:16, name:"꿀유자차",             price:3500, hasTemp:true,  cat:"tea" },
-  { id:17, name:"꿀생강차",             price:3500, hasTemp:true,  cat:"tea" },
-  { id:18, name:"진저레몬티",           price:4000, hasTemp:true,  cat:"tea" },
-  { id:19, name:"유기농 페퍼민트차",    price:5000, hasTemp:true,  cat:"tea" },
-  { id:20, name:"캐모마일차",           price:3500, hasTemp:true,  cat:"tea" },
-  { id:21, name:"복숭아 아이스티",      price:3000, hasTemp:false, cat:"tea" },
-  { id:22, name:"아망추",               price:4000, hasTemp:false, cat:"tea" },
-  /* SMOOTHIE & SHAKE */
-  { id:23, name:"플레인요거트스무디",   price:3500, hasTemp:false, cat:"smoothie" },
-  { id:24, name:"블루베리요거트스무디", price:4000, hasTemp:false, cat:"smoothie" },
-  { id:25, name:"딸기요거트스무디",     price:4000, hasTemp:false, cat:"smoothie" },
-  { id:26, name:"망고요거트스무디",     price:4000, hasTemp:false, cat:"smoothie" },
-  { id:27, name:"유자요거트스무디",     price:4000, hasTemp:false, cat:"smoothie" },
-  { id:28, name:"밀크쉐이크",           price:3500, hasTemp:false, cat:"smoothie" },
-  { id:29, name:"초코쉐이크",           price:4000, hasTemp:false, cat:"smoothie" },
-  { id:30, name:"말차쉐이크",           price:4000, hasTemp:false, cat:"smoothie" },
-  { id:31, name:"바나나쉐이크",         price:4000, hasTemp:false, cat:"smoothie" },
-  { id:32, name:"딸기바나나스무디",     price:4500, hasTemp:false, cat:"smoothie", tag:"Special" },
-  { id:33, name:"초코바나나스무디",     price:4500, hasTemp:false, cat:"smoothie" },
-  /* HEALTHY SMOOTHIE */
-  { id:34, name:"케일바나나주스",       price:4500, hasTemp:false, cat:"healthy" },
-  /* DESSERT */
-  { id:35, name:"꾸로플",               price:1000, hasTemp:false, cat:"dessert" },
-  /* OPTION */
-  { id:36, name:"샷 추가",              price:500,  hasTemp:false, cat:"option" },
-  { id:37, name:"오트밀크 변경",        price:500,  hasTemp:false, cat:"option" },
-  { id:38, name:"디카페인 변경",        price:500,  hasTemp:false, cat:"option" },
-  { id:39, name:"연하게",               price:0,    hasTemp:false, cat:"option" },
-];
-const CATS = {
-  coffee:   { icon:"☕", label:"커피 · Coffee" },
-  latte:    { icon:"🥛", label:"라떼 · Latte" },
-  ade:      { icon:"🧃", label:"에이드 · 주스" },
-  tea:      { icon:"🍵", label:"차 · Tea" },
-  smoothie: { icon:"🥤", label:"스무디 · 쉐이크" },
-  healthy:  { icon:"🥬", label:"건강 스무디" },
-  dessert:  { icon:"🍯", label:"디저트" },
-  option:   { icon:"➕", label:"옵션 · 요청사항" },
-};
 
 /* 금액 표기. 0원짜리 요청사항은 「무료」로 보여준다 */
 function won(n) { return n ? `${n.toLocaleString("ko-KR")}원` : "무료"; }
@@ -765,7 +732,9 @@ MENU.forEach(m => { qtyMap[m.id] = 1; if (m.hasTemp) tempMap[m.id] = "ice"; });
      https://script.google.com/macros/s/AKfy..../exec
    URL이 없으면 이 기기에서만 저장되는 로컬 모드로 동작합니다.      */
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwMDteZephpg3wm_m8pObKpEDgMtXh42tG0lmF1bA2MZ5wN22zw3smbO-UFFeosu_MEJQ/exec";
-const CLOUD_READY = /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(APPS_SCRIPT_URL);
+/* ?local=1 — 구글 시트에 쓰지 않는 로컬(localStorage) 전용 모드. 검증·시연용 */
+const FORCE_LOCAL = new URLSearchParams(location.search).get("local") === "1";
+const CLOUD_READY = !FORCE_LOCAL && /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(APPS_SCRIPT_URL);
 
 /* ─── ORDER CACHE (single source of truth for every screen) ─── */
 let ordersCache = [];
@@ -774,10 +743,46 @@ function getOrders() { return ordersCache.slice(); }
 /* Called whenever fresh data arrives (cloud poll or local write) */
 function applyOrdersSnapshot(orders) {
   ordersCache = Array.isArray(orders) ? orders : [];
+  notifyNewKioskOrders();
   pruneKSelected();
   updateKNavBadge();
   if (currentTab === "kitchen") renderKitchen();
   if (currentTab === "history") renderHistory();
+}
+
+/* ─── 키오스크 새 주문 알림: 이전 목록에 없던 kiosk 주문이 오면 알림음 + 토스트 ─── */
+let knownOrderIds = null;   // null = 첫 스냅숏(과거 주문에는 알림을 울리지 않는다)
+function notifyNewKioskOrders() {
+  const prev = knownOrderIds;
+  knownOrderIds = new Set(ordersCache.map(o => o.id));
+  if (!prev) return;
+  ordersCache.forEach(o => {
+    if (o.source === "kiosk" && o.id && !prev.has(o.id)) {
+      playOrderChime();
+      showToast(`🛎 키오스크 주문 ${o.customerNumber}번`);
+    }
+  });
+}
+
+/* 짧은 2음 알림음 — 외부 파일 없이 WebAudio로 만든다 (실패해도 조용히 넘어간다) */
+let chimeCtx = null;
+function playOrderChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    chimeCtx = chimeCtx || new Ctx();
+    if (chimeCtx.state === "suspended") chimeCtx.resume();
+    const t0 = chimeCtx.currentTime;
+    [[880, 0], [1318.5, 0.18]].forEach(([freq, dt]) => {
+      const o = chimeCtx.createOscillator(), g = chimeCtx.createGain();
+      o.type = "sine"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0 + dt);
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + dt + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.5);
+      o.connect(g); g.connect(chimeCtx.destination);
+      o.start(t0 + dt); o.stop(t0 + dt + 0.55);
+    });
+  } catch (e) { /* 알림음은 보조 기능 */ }
 }
 
 /* Drop kitchen selections whose item is no longer pending (changed elsewhere) */
@@ -1103,6 +1108,31 @@ async function submitOrder() {
   }, 1600);
 }
 
+/* ══════════ 키오스크 주문 배지·결제 표시 (주방·내역 공용) ══════════ */
+function kioskBadgeHTML(order) {
+  return order.source === "kiosk" ? `<span class="src-badge">키오스크</span>` : "";
+}
+function payLineHTML(order) {
+  const method = order.payMethod === "transfer" ? "🏦 계좌이체"
+               : order.payMethod === "cash"     ? "💵 현금" : "";
+  let status = "";
+  if (order.payStatus === "paid") {
+    status = `<span class="pay-chip paid">결제완료</span>`;
+  } else if (order.payStatus === "unpaid") {
+    status = `<span class="pay-chip unpaid">미결제</span>
+      <button class="pay-confirm-btn" onclick="event.stopPropagation();confirmPayment('${order.id}')">결제확인</button>`;
+  }
+  if (!method && !status) return "";
+  return `<div class="pay-line">${method ? `<span class="pay-method">${method}</span>` : ""}${status}</div>`;
+}
+function confirmPayment(orderId) {
+  const order = getOrders().find(o => o.id === orderId);
+  if (!order) return;
+  Backend.update(orderId, { payStatus: "paid" })
+    .then(() => showToast(`손님 #${order.customerNumber} 결제 확인 ✓`))
+    .catch(err => { console.error(err); showToast("⚠️ 처리 실패 — 연결을 확인해 주세요"); });
+}
+
 /* ══════════ KITCHEN SCREEN ══════════ */
 function getPendingItems() {
   const out = [];
@@ -1144,7 +1174,7 @@ function renderKitchen() {
     const t = new Date(order.timestamp).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
     return `<div class="k-card ${allSel?"sel":""}" id="kc-${order.id}" onclick="kToggle('${order.id}')">
       <div class="k-card-head">
-        <div><div class="k-cust">👤 손님 #${order.customerNumber}</div></div>
+        <div><div class="k-cust">👤 손님 #${order.customerNumber}${kioskBadgeHTML(order)}</div>${payLineHTML(order)}</div>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="k-time">${t}</span>
           <button class="k-del-order" title="주문 전체 삭제"
@@ -1244,6 +1274,16 @@ function updateKNavBadge() {
 }
 
 /* ══════════ HISTORY SCREEN ══════════ */
+/* 결제수단별 매출 합계. payMethod가 없는 기존 주문은 「직원 주문」으로 분류 */
+function payTotals(orders) {
+  const t = { transfer: 0, cash: 0, staff: 0 };
+  orders.forEach(o => {
+    const k = o.payMethod === "transfer" ? "transfer" : o.payMethod === "cash" ? "cash" : "staff";
+    t[k] += o.total || 0;
+  });
+  return t;
+}
+
 /* Local YYYY-MM-DD key for an ISO timestamp (groups orders by calendar day) */
 function dayKey(ts) {
   const d = new Date(ts);
@@ -1350,12 +1390,16 @@ function renderHistory() {
   const done = dateSet.filter(o=>o.orderStatus==="completed").length;
   const pend = dateSet.filter(o=>o.orderStatus==="pending").length;
   const avg  = dateSet.length ? Math.round(rev/dateSet.length) : 0;
+  const payT = payTotals(dateSet);
   document.getElementById("summaryRow").innerHTML = `
     <div class="sum-card"><div class="sum-lbl">총 주문</div><div class="sum-val purple">${dateSet.length}</div></div>
     <div class="sum-card"><div class="sum-lbl">매출</div><div class="sum-val green">${rev.toLocaleString("ko-KR")}원</div></div>
     <div class="sum-card"><div class="sum-lbl">완료</div><div class="sum-val green">${done}</div></div>
     <div class="sum-card"><div class="sum-lbl">대기</div><div class="sum-val orange">${pend}</div></div>
-    <div class="sum-card"><div class="sum-lbl">평균</div><div class="sum-val blue">${avg.toLocaleString("ko-KR")}원</div></div>`;
+    <div class="sum-card"><div class="sum-lbl">평균</div><div class="sum-val blue">${avg.toLocaleString("ko-KR")}원</div></div>
+    <div class="sum-card"><div class="sum-lbl">🏦 계좌이체</div><div class="sum-val green">${payT.transfer.toLocaleString("ko-KR")}원</div></div>
+    <div class="sum-card"><div class="sum-lbl">💵 현금</div><div class="sum-val orange">${payT.cash.toLocaleString("ko-KR")}원</div></div>
+    <div class="sum-card"><div class="sum-lbl">직원 주문</div><div class="sum-val blue">${payT.staff.toLocaleString("ko-KR")}원</div></div>`;
 
   const hb = document.getElementById("hHeaderBadge");
   if (hb) hb.textContent = `총 ${dateSet.length}건`;
@@ -1404,7 +1448,7 @@ function renderHistory() {
       <div class="hist-row ${sc}">
         <div class="hist-row-head" onclick="hToggle('${order.id}')">
           <div class="h-dot ${sc}"></div>
-          <div><div class="h-cust-num">👤 손님 #${order.customerNumber}</div><div class="h-time">${t}</div></div>
+          <div><div class="h-cust-num">👤 손님 #${order.customerNumber}${kioskBadgeHTML(order)}</div><div class="h-time">${t}</div>${payLineHTML(order)}</div>
           <span class="h-status-chip ${sc}">${sl}</span>
           <div class="h-total">${order.total.toLocaleString("ko-KR")}원</div>
           <button class="k-del-order" title="주문 전체 삭제"
@@ -1467,6 +1511,7 @@ function monthStats(mk) {
     totalRev: orders.reduce((s, o) => s + o.total, 0),
     totalQty: menus.reduce((s, r) => s + r.qty, 0),
     done:     orders.filter(o => o.orderStatus === "completed").length,
+    payT:     payTotals(orders),
   };
 }
 
@@ -1528,6 +1573,12 @@ function buildMonthReport(mk) {
       <td><div class="pdf-kpi-l">영업일수</div><div class="pdf-kpi-v">${s.days.length}일</div></td>
       <td><div class="pdf-kpi-l">일평균 매출</div><div class="pdf-kpi-v">${money(avgDay)}</div></td>
       <td><div class="pdf-kpi-l">건당 평균</div><div class="pdf-kpi-v">${money(avgOrd)}</div></td>
+    </tr></table>
+
+    <table class="pdf-kpi" style="margin-top:8px"><tr>
+      <td style="width:33.4%"><div class="pdf-kpi-l">🏦 계좌이체 (키오스크)</div><div class="pdf-kpi-v">${money(s.payT.transfer)}</div></td>
+      <td style="width:33.3%"><div class="pdf-kpi-l">💵 현금 (키오스크)</div><div class="pdf-kpi-v">${money(s.payT.cash)}</div></td>
+      <td style="width:33.3%"><div class="pdf-kpi-l">직원 주문</div><div class="pdf-kpi-v">${money(s.payT.staff)}</div></td>
     </tr></table>
 
     <table class="pdf-cols"><tr>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 대연마루 키오스크 아이콘: 우드톤 바탕 + 연두 커피잔 -->
+  <rect width="512" height="512" rx="96" fill="#5C4327"/>
+  <rect x="32" y="32" width="448" height="448" rx="72" fill="#6B4F2E"/>
+  <!-- 잔 받침 -->
+  <ellipse cx="248" cy="408" rx="150" ry="22" fill="#3C2C18"/>
+  <!-- 손잡이 -->
+  <path d="M352 220 h28 a52 52 0 0 1 0 104 h-28 v-40 h24 a14 14 0 0 0 0-28 h-24 z" fill="#B7E4C7"/>
+  <!-- 컵 -->
+  <path d="M144 200 h208 v120 a72 72 0 0 1 -72 72 h-64 a72 72 0 0 1 -72 -72 z" fill="#B7E4C7"/>
+  <path d="M144 200 h208 v28 h-208 z" fill="#95D5B2"/>
+  <!-- 김 -->
+  <path d="M212 96 c-16 20 16 36 0 56 M284 96 c-16 20 16 36 0 56" stroke="#EAF7EF" stroke-width="18" stroke-linecap="round" fill="none"/>
+</svg>
