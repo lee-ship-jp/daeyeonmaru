@@ -568,6 +568,19 @@
 <script>
 /* ═══════════ 공통 유틸 ═══════════ */
 function won(n) { return n ? `${n.toLocaleString("ko-KR")}원` : "무료"; }
+/* 주문·메뉴 데이터를 innerHTML에 넣을 때는 반드시 이걸 거친다 (저장형 XSS 방지) */
+function esc(v) {
+  return String(v == null ? "" : v).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+/* 저장 요청이 무한정 걸리지 않도록 제한 시간을 둔다 */
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("저장 응답 시간 초과")), ms);
+    promise.then(v => { clearTimeout(t); resolve(v); },
+                 e => { clearTimeout(t); reject(e); });
+  });
+}
 function dayKey(ts) {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -623,8 +636,34 @@ const CLOUD_READY = !FORCE_LOCAL && /^https:\/\/script\.google\.com\/macros\/s\/
 
 let ordersCache = [];
 function getOrders() { return ordersCache.slice(); }
+/* 잘못된 주문 한 건이 번호판·화면을 깨뜨리지 않도록 렌더 전에 거른다.
+   items가 배열이 아니거나 번호·시각이 숫자/날짜가 아니면 그 주문만 건너뛴다 */
+function normalizeOrder(o) {
+  if (!o || typeof o !== "object" || !o.id || !Array.isArray(o.items)) return null;
+  const customerNumber = Number(o.customerNumber);
+  const time = new Date(o.timestamp).getTime();
+  if (!Number.isFinite(customerNumber) || !Number.isFinite(time)) return null;
+  const items = o.items
+    .filter(i => i && typeof i === "object" && typeof i.name === "string")
+    .map((i, idx) => ({ ...i,
+      itemId: i.itemId == null ? `i_${idx}` : String(i.itemId),
+      price: Number(i.price) || 0,
+      qty: Math.max(1, Number(i.qty) || 1),
+      status: i.status === "completed" ? "completed" : "pending" }));
+  if (!items.length) return null;
+  const total = Number(o.total);
+  return { ...o, customerNumber, items,
+    total: Number.isFinite(total) ? total : items.reduce((s, i) => s + i.price * i.qty, 0),
+    orderStatus: ["pending", "partial", "completed"].includes(o.orderStatus) ? o.orderStatus : "pending" };
+}
 function applyOrdersSnapshot(orders) {
-  ordersCache = Array.isArray(orders) ? orders : [];
+  const list = Array.isArray(orders) ? orders : [];
+  ordersCache = [];
+  list.forEach(o => {
+    const n = normalizeOrder(o);
+    if (n) ordersCache.push(n);
+    else console.warn("잘못된 주문 데이터를 건너뜁니다:", o);
+  });
   if (screen === "number") renderNumGrid();
 }
 function setSyncStatus(mode) {
@@ -693,13 +732,20 @@ function makeCloudBackend() {
 function makeLocalBackend() {
   const KEY = "maru_orders", UP = "maru_update";   // index.html과 같은 키 → 로컬 모드에서도 두 앱이 주문을 공유한다
   const read  = () => JSON.parse(localStorage.getItem(KEY) || "[]");
-  const write = a => { localStorage.setItem(KEY, JSON.stringify(a)); localStorage.setItem(UP, Date.now()); };
+  const write = a => {
+    localStorage.setItem(KEY, JSON.stringify(a));              // 주문 본체가 저장되면 저장 성공
+    try { localStorage.setItem(UP, Date.now()); } catch (e) {} // 보조 알림 키 실패는 저장 실패로 취급하지 않는다
+  };
   window.addEventListener("storage", e => { if (e.key === KEY || e.key === UP) applyOrdersSnapshot(read()); });
   return {
     cloud: false,
     refresh() { applyOrdersSnapshot(read()); return Promise.resolve(); },
     add(order) {
       const a = read();
+      // 같은 clientOrderId가 이미 있으면 재시도 — 이미 접수된 주문이므로 중복 저장하지 않는다
+      if (order.clientOrderId && a.some(x => x && x.clientOrderId === order.clientOrderId)) {
+        applyOrdersSnapshot(a); return Promise.resolve();
+      }
       order.id = "order_" + Date.now() + "_" + Math.floor(Math.random() * 1e4);
       a.push(order); write(a); applyOrdersSnapshot(a); return Promise.resolve();
     },
@@ -712,7 +758,11 @@ function makeLocalBackend() {
       const a = read().filter(x => x.id !== id);
       write(a); applyOrdersSnapshot(a); return Promise.resolve();
     },
-    clearAll() { localStorage.removeItem(KEY); localStorage.setItem(UP, Date.now()); applyOrdersSnapshot([]); return Promise.resolve(); }
+    clearAll() {
+      localStorage.removeItem(KEY);
+      try { localStorage.setItem(UP, Date.now()); } catch (e) {}
+      applyOrdersSnapshot([]); return Promise.resolve();
+    }
   };
 }
 
@@ -720,6 +770,7 @@ const Backend = CLOUD_READY ? makeCloudBackend() : makeLocalBackend();
 
 /* ═══════════ 상태 ═══════════ */
 const KIOSK_MIN = 1, KIOSK_MAX = 10;   // 직원앱과 같은 1~10 공용 번호 — 진행 중 주문이 쓰는 번호는 「사용 중」으로 막는다
+const SAVE_TIMEOUT_MS = 20000;         // 저장 요청 제한 시간 — 넘기면 실패 처리하고 장바구니를 유지한다
 let screen    = "idle";
 let custNum   = null;
 let cart      = [];      // [{uid, menuId, name, price, temp, qty, opts:[{id,name,price}]}]
@@ -728,6 +779,8 @@ let cartOpen  = false;
 let activeCat = "coffee";
 let lastOrder = null;
 let saving    = false;
+let kioskSession = 0;    // 손님 세션 토큰 — 처음으로 돌아갈 때마다 바뀌며, 늦게 끝난 저장이 다음 손님 화면을 못 건드리게 한다
+let pendingClientOrderId = null;   // 접수 시도마다 고정되는 주문 키 — 실패 후 재시도에 같은 키를 써서 중복 접수를 막는다
 
 /* ═══════════ 화면 전환 ═══════════ */
 function showScreen(name) {
@@ -739,7 +792,9 @@ function showScreen(name) {
 }
 
 function goIdle() {
+  kioskSession++;   // 이전 손님의 늦은 저장 응답이 이후 화면·장바구니를 바꾸지 못하게 세션을 끊는다
   cart = []; custNum = null; lastOrder = null; saving = false; cartOpen = false;
+  pendingClientOrderId = null;
   clearTimeout(idleTimer); clearInterval(dlgCountTimer); clearInterval(doneTimer);
   closeDlg(); closeOptModal();
   renderCart();
@@ -790,23 +845,28 @@ const RECO_IDS = [3, 8, 16];   // 마루라떼 · 딸기라떼 · 꿀유자차
 function renderIdleReco() {
   document.getElementById("idleReco").innerHTML = RECO_IDS.map(id => {
     const m = MENU.find(x => x.id === id);
-    const tag = m.tag ? `<span class="reco-tag">${m.tag}</span>` : `<span class="reco-tag">추천</span>`;
+    const tag = m.tag ? `<span class="reco-tag">${esc(m.tag)}</span>` : `<span class="reco-tag">추천</span>`;
     return `<div class="reco-card">
-      <div class="reco-img"><span class="ph">${CATS[m.cat].icon}</span><img src="${m.img}" alt="" onerror="this.remove()"></div>
+      <div class="reco-img"><span class="ph">${CATS[m.cat].icon}</span><img src="${esc(m.img)}" alt="" onerror="this.remove()"></div>
       ${tag}
-      <div class="reco-name">${m.name}</div>
+      <div class="reco-name">${esc(m.name)}</div>
       <div class="reco-price">${won(m.price)}</div>
     </div>`;
   }).join("");
 }
 
 /* ═══════════ ② 번호 선택 ═══════════ */
-/* 오늘 주문 중 완료되지 않은 주문이 쓰는 번호 = 사용 중 */
+/* 번호 점유: completed가 아닌 모든 주문(생성 후 24시간 이내) — 직원앱과 같은 기준.
+   어제 미완료 주문처럼 주방에 아직 보이는 주문의 번호는 재사용하지 않는다 */
+const BUSY_WINDOW_MS = 24 * 60 * 60 * 1000;
 function busyNumbers() {
-  const today = dayKey(new Date().toISOString());
+  const now = Date.now();
   const s = new Set();
   getOrders().forEach(o => {
-    if (o.orderStatus !== "completed" && dayKey(o.timestamp) === today) s.add(Number(o.customerNumber));
+    if (o.orderStatus === "completed") return;
+    const t = new Date(o.timestamp).getTime();
+    if (now - t > BUSY_WINDOW_MS) return;
+    s.add(Number(o.customerNumber));
   });
   return s;
 }
@@ -832,8 +892,8 @@ function renderCatTabs() {
   el.innerHTML = Object.entries(CATS)
     .filter(([key]) => key !== "option")
     .map(([key, c]) =>
-      `<button class="cat-tab ${key === activeCat ? "active" : ""}" id="cat-${key}" onclick="setCat('${key}')">
-        <span>${c.icon}</span><span>${c.label}</span>
+      `<button class="cat-tab ${key === activeCat ? "active" : ""}" id="cat-${esc(key)}" data-cat="${esc(key)}">
+        <span>${c.icon}</span><span>${esc(c.label)}</span>
       </button>`).join("");
 }
 function setCat(key) {
@@ -845,11 +905,11 @@ function setCat(key) {
 function renderMenuGrid() {
   const items = MENU.filter(m => m.cat === activeCat);
   document.getElementById("menuGrid").innerHTML = items.map(m => {
-    const tag = m.tag ? `<span class="kcard-tag">${m.tag}</span>` : "";
-    return `<button class="kcard" id="kcard-${m.id}" onclick="openOptModal(${m.id})">
-      <div class="kcard-img"><span class="ph">${CATS[m.cat].icon}</span><img src="${m.img || ""}" alt="" onerror="this.remove()"></div>
+    const tag = m.tag ? `<span class="kcard-tag">${esc(m.tag)}</span>` : "";
+    return `<button class="kcard" id="kcard-${Number(m.id)}" data-mid="${Number(m.id)}">
+      <div class="kcard-img"><span class="ph">${CATS[m.cat].icon}</span><img src="${esc(m.img || "")}" alt="" onerror="this.remove()"></div>
       <div class="kcard-body">
-        <div class="kcard-name">${m.name}${tag}</div>
+        <div class="kcard-name">${esc(m.name)}${tag}</div>
         <div class="kcard-price">${won(m.price)}</div>
       </div>
     </button>`;
@@ -877,39 +937,39 @@ function renderOptModal() {
   const tempHTML = m.hasTemp ? `
     <div class="opt-sec-lbl">온도 선택</div>
     <div class="opt-temp">
-      <button class="ice ${optState.temp === "ice" ? "active" : ""}" onclick="optSetTemp('ice')">🧊 ICE</button>
-      <button class="hot ${optState.temp === "hot" ? "active" : ""}" onclick="optSetTemp('hot')">🔥 HOT</button>
+      <button class="ice ${optState.temp === "ice" ? "active" : ""}" data-temp="ice">🧊 ICE</button>
+      <button class="hot ${optState.temp === "hot" ? "active" : ""}" data-temp="hot">🔥 HOT</button>
     </div>` : "";
   const extras = EXTRA_CATS.includes(m.cat) ? MENU.filter(x => x.cat === "option") : [];
   const extraHTML = extras.length ? `
     <div class="opt-sec-lbl">추가 옵션 (선택)</div>
     <div class="opt-extra">
       ${extras.map(op => `
-        <button class="${optState.opts.has(op.id) ? "on" : ""}" id="opt-${op.id}" onclick="optToggle(${op.id})">
-          <span>${op.name} · ${won(op.price)}</span>
+        <button class="${optState.opts.has(op.id) ? "on" : ""}" id="opt-${Number(op.id)}" data-opt="${Number(op.id)}">
+          <span>${esc(op.name)} · ${won(op.price)}</span>
           <span class="mark">${optState.opts.has(op.id) ? "✓" : "+"}</span>
         </button>`).join("")}
     </div>` : "";
   const unit = m.price + [...optState.opts].reduce((s, id) => s + MENU.find(x => x.id === id).price, 0);
   document.getElementById("optModal").innerHTML = `
     <div class="opt-head">
-      <div class="opt-img"><span class="ph">${CATS[m.cat].icon}</span><img src="${m.img || ""}" alt="" onerror="this.remove()"></div>
+      <div class="opt-img"><span class="ph">${CATS[m.cat].icon}</span><img src="${esc(m.img || "")}" alt="" onerror="this.remove()"></div>
       <div>
-        <div class="opt-name">${m.name}</div>
+        <div class="opt-name">${esc(m.name)}</div>
         <div class="opt-price">${won(m.price)}</div>
       </div>
     </div>
     ${tempHTML}
     <div class="opt-sec-lbl">수량</div>
     <div class="opt-qty">
-      <button onclick="optQty(-1)">−</button>
+      <button data-qd="-1">−</button>
       <span class="q" id="optQtyVal">${optState.qty}</span>
-      <button id="optQtyPlus" onclick="optQty(1)">+</button>
+      <button id="optQtyPlus" data-qd="1">+</button>
     </div>
     ${extraHTML}
     <div class="opt-foot">
-      <button class="big-btn ghost cancel" onclick="closeOptModal()">취소</button>
-      <button class="big-btn green add" id="optAdd" onclick="addFromModal()">담기 · ${won(unit * optState.qty)}</button>
+      <button class="big-btn ghost cancel" data-act="cancel">취소</button>
+      <button class="big-btn green add" id="optAdd" data-act="add">담기 · ${won(unit * optState.qty)}</button>
     </div>`;
 }
 function optSetTemp(t) { if (optState) { optState.temp = t; renderOptModal(); } }
@@ -933,6 +993,7 @@ function addFromModal() {
   });
   closeOptModal();
   cartOpen = true;
+  pendingClientOrderId = null;   // 장바구니 내용이 바뀌면 새 주문 키를 쓴다
   renderCart();
   showToast(`${m.name} 담김 ✓`);
 }
@@ -961,16 +1022,16 @@ function renderCart() {
         const sub = [tl, opts].filter(Boolean).join(" · ");
         return `<div class="kline">
           <div class="kline-info">
-            <div class="kline-name">${g.name}</div>
-            ${sub ? `<div class="kline-sub">${sub}</div>` : ""}
+            <div class="kline-name">${esc(g.name)}</div>
+            ${sub ? `<div class="kline-sub">${esc(sub)}</div>` : ""}
           </div>
           <div class="kline-qty">
-            <button onclick="cartQty(${g.uid},-1)">−</button>
+            <button data-uid="${Number(g.uid)}" data-qd="-1">−</button>
             <span class="q">${g.qty}</span>
-            <button onclick="cartQty(${g.uid},1)">+</button>
+            <button data-uid="${Number(g.uid)}" data-qd="1">+</button>
           </div>
           <span class="kline-amt">${(groupUnitPrice(g) * g.qty).toLocaleString("ko-KR")}원</span>
-          <button class="kline-del" onclick="cartRemove(${g.uid})">✕</button>
+          <button class="kline-del" data-del="${Number(g.uid)}">✕</button>
         </div>`;
       }).join("");
 }
@@ -979,10 +1040,12 @@ function cartQty(uid, d) {
   const g = cart.find(x => x.uid === uid);
   if (!g) return;
   g.qty = Math.min(99, Math.max(1, g.qty + d));
+  pendingClientOrderId = null;
   renderCart();
 }
 function cartRemove(uid) {
   cart = cart.filter(x => x.uid !== uid);
+  pendingClientOrderId = null;
   renderCart();
 }
 function askClearCart() {
@@ -991,7 +1054,7 @@ function askClearCart() {
     icon: "🗑", title: "담은 메뉴를 모두 지울까요?",
     buttons: [
       { label: "아니요", cls: "ghost", onClick: closeDlg },
-      { label: "전체취소", cls: "green", onClick: () => { cart = []; renderCart(); closeDlg(); } },
+      { label: "전체취소", cls: "green", onClick: () => { cart = []; pendingClientOrderId = null; renderCart(); closeDlg(); } },
     ]
   });
 }
@@ -1012,14 +1075,21 @@ function buildOrderItems() {
 
 async function finalizeOrder(method) {
   if (saving || !cart.length || !custNum) return;
+  const mySession = kioskSession;   // 이 저장 작업이 속한 손님 세션 — 도중에 바뀌면 UI·장바구니를 건드리지 않는다
   saving = true;
+  clearTimeout(idleTimer);          // 저장 중에는 무입력 타이머를 멈춘다 (저장 대기 중 초기화 방지)
   const btn = document.getElementById(method === "transfer" ? "transferDone" : "cashDone");
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = "접수 중…";
-  const restore = () => { saving = false; btn.disabled = false; btn.textContent = label; };
+  const restore = () => {
+    if (mySession !== kioskSession) return;   // 이미 다른 손님 세션으로 넘어감
+    saving = false; btn.disabled = false; btn.textContent = label;
+    armIdleTimer();
+  };
 
   // 저장 직전 목록을 다시 받아, 그 사이 같은 번호로 주문이 들어왔는지 확인한다
-  try { await Backend.refresh(); } catch (e) { /* 확인 실패 시에도 저장은 시도 */ }
+  try { await withTimeout(Backend.refresh(), SAVE_TIMEOUT_MS); } catch (e) { /* 확인 실패 시에도 저장은 시도 */ }
+  if (mySession !== kioskSession) return;
   if (busyNumbers().has(custNum)) {
     restore();
     showDlg({
@@ -1030,7 +1100,10 @@ async function finalizeOrder(method) {
     return;
   }
 
+  // 같은 장바구니의 재시도에는 같은 주문 키를 써서, 이미 접수된 주문의 중복 저장을 막는다
+  if (!pendingClientOrderId) pendingClientOrderId = `kiosk_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   const order = {
+    clientOrderId: pendingClientOrderId,
     customerNumber: custNum,
     timestamp: new Date().toISOString(),
     items: buildOrderItems(),
@@ -1041,9 +1114,10 @@ async function finalizeOrder(method) {
     payStatus: "unpaid",
   };
   try {
-    await Backend.add(order);
+    await withTimeout(Backend.add(order), SAVE_TIMEOUT_MS);
   } catch (err) {
     console.error(err);
+    if (mySession !== kioskSession) return;
     restore();
     showDlg({
       icon: "⚠️", title: "주문 저장에 실패했습니다",
@@ -1052,6 +1126,8 @@ async function finalizeOrder(method) {
     });
     return;
   }
+  if (mySession !== kioskSession) return;   // 늦게 끝난 저장 — 다음 손님의 화면·장바구니를 바꾸지 않는다
+  pendingClientOrderId = null;
   lastOrder = order;
   cart = []; renderCart();
   restore();
@@ -1062,20 +1138,20 @@ async function finalizeOrder(method) {
 let doneTimer = null;
 function showDone() {
   const o = lastOrder;
-  document.getElementById("doneNum").textContent  = o.customerNumber;
-  document.getElementById("doneNum2").textContent = o.customerNumber;
+  document.getElementById("doneNum").textContent  = Number(o.customerNumber);
+  document.getElementById("doneNum2").textContent = Number(o.customerNumber);
   document.getElementById("donePayBox").innerHTML = o.payMethod === "transfer"
     ? `<div class="acct-box">
          <div class="acct-bank">🏦 계좌이체 · ${won(o.total)}</div>
          <div class="acct-num">301-0383-6883-11</div>
          <div class="acct-holder">NH농협 · 예금주 기쁜소식부산대연교회</div>
-         <div class="acct-raw">아직 이체 전이라면 지금 보내 주세요 — 입금자명에 <b>${o.customerNumber}번</b></div>
+         <div class="acct-raw">아직 이체 전이라면 지금 보내 주세요 — 입금자명에 <b>${Number(o.customerNumber)}번</b></div>
          <button class="acct-copy-btn" id="doneAcctCopyBtn" onclick="copyAccount()">📋 계좌번호 복사</button>
        </div>`
     : `<div class="depositor-note">💵 카운터에서 현금 ${won(o.total)}을<br>결제해 주세요</div>`;
   const lines = o.items.map(it =>
     `<div class="done-item">
-       <span class="nm ${it.price === 0 || MENU.some(m => m.cat === "option" && m.name === it.name) ? "opt" : ""}">${it.name}${it.temp === "ice" ? " · ICE" : it.temp === "hot" ? " · HOT" : ""} × ${it.qty}</span>
+       <span class="nm ${it.price === 0 || MENU.some(m => m.cat === "option" && m.name === it.name) ? "opt" : ""}">${esc(it.name)}${it.temp === "ice" ? " · ICE" : it.temp === "hot" ? " · HOT" : ""} × ${Number(it.qty)}</span>
        <span class="amt">${(it.price * it.qty).toLocaleString("ko-KR")}원</span>
      </div>`).join("");
   document.getElementById("doneItems").innerHTML =
@@ -1121,6 +1197,7 @@ const IDLE_MS = 60000, ASK_SECONDS = 10;
 let idleTimer = null;
 function armIdleTimer() {
   clearTimeout(idleTimer);
+  if (saving) return;                                   // 저장 중에는 무입력 타이머를 걸지 않는다
   if (screen === "idle" || screen === "done") return;   // 완료 화면은 자체 타이머가 처리
   idleTimer = setTimeout(askContinue, IDLE_MS);
 }
@@ -1140,8 +1217,33 @@ function askContinue() {
     if (remain <= 0) { closeDlg(); goIdle(); }
   }, 1000);
 }
-/* 터치가 있으면 타이머를 다시 센다 (카운트다운 중에는 버튼으로만 계속) */
-document.addEventListener("pointerdown", () => { if (!dlgIsOpen()) armIdleTimer(); }, true);
+/* 터치가 있으면 타이머를 다시 센다 (카운트다운 중에는 버튼으로만 계속, 저장 중에는 걸지 않음) */
+document.addEventListener("pointerdown", () => { if (!dlgIsOpen() && !saving) armIdleTimer(); }, true);
+
+/* ═══════════ 이벤트 위임 — 인라인 onclick에 데이터가 섞이지 않게 data-속성으로 처리 ═══════════ */
+document.getElementById("catTabs").addEventListener("click", e => {
+  const t = e.target.closest(".cat-tab");
+  if (t) setCat(t.dataset.cat);
+});
+document.getElementById("menuGrid").addEventListener("click", e => {
+  const card = e.target.closest(".kcard");
+  if (card) openOptModal(Number(card.dataset.mid));
+});
+document.getElementById("optModal").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.temp)              optSetTemp(b.dataset.temp);
+  else if (b.dataset.qd)           optQty(Number(b.dataset.qd));
+  else if (b.dataset.opt)          optToggle(Number(b.dataset.opt));
+  else if (b.dataset.act === "cancel") closeOptModal();
+  else if (b.dataset.act === "add")    addFromModal();
+});
+document.getElementById("cartBody").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.del)      cartRemove(Number(b.dataset.del));
+  else if (b.dataset.uid) cartQty(Number(b.dataset.uid), Number(b.dataset.qd));
+});
 
 /* ═══════════ INIT ═══════════ */
 renderIdleReco();
