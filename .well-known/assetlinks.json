@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "dev.pages.daeyeonmaru.kiosk",
+    "sha256_cert_fingerprints": ["A4:5A:3C:3C:83:64:8D:7C:31:CA:09:92:C8:91:AD:CB:51:C3:9C:B4:B4:8B:3E:7A:49:52:F8:46:A3:E1:94:C4"]
+  }
+}]
