@@ -124,6 +124,10 @@
     }
     .num-btn:hover  { border-color: #40916C; color: #40916C; background: #F0FDF4; }
     .num-btn.sel    { background: #1B4332; border-color: #1B4332; color: #fff; }
+    .num-btn:disabled {
+      background: #F3F4F6; border-color: #E5E7EB; color: #C4C9D0; cursor: not-allowed;
+    }
+    .num-busy-lbl { display: block; font-size: 0.55rem; font-weight: 700; color: #C4C9D0; line-height: 1.1; }
     .start-btn {
       width: 100%; padding: 14px;
       background: #1B4332; color: #fff;
@@ -540,7 +544,14 @@
       display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
       margin-top: 4px;
     }
-    .pay-method { font-size: 0.72rem; font-weight: 700; color: #6B7280; white-space: nowrap; }
+    /* 결제수단 큰 칩 — 손님번호 옆 상단에 한눈에 보이게 (계좌이체=파랑, 현금=주황) */
+    .pay-method-chip {
+      display: inline-block; margin-left: 6px; vertical-align: 1px;
+      font-size: 0.8rem; font-weight: 800; padding: 3px 10px;
+      border-radius: 999px; white-space: nowrap;
+    }
+    .pay-method-chip.transfer { background: #DBEAFE; color: #1D4ED8; border: 1.5px solid #93C5FD; }
+    .pay-method-chip.cash     { background: #FFEDD5; color: #C2410C; border: 1.5px solid #FDBA74; }
     .pay-chip {
       font-size: 0.68rem; font-weight: 800; padding: 2px 8px;
       border-radius: 999px; white-space: nowrap;
@@ -553,6 +564,33 @@
       font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap;
     }
     .pay-confirm-btn:hover { background: #15803D; }
+
+    /* ===== 직원 주문 결제수단 선택 모달 ===== */
+    .paym-modal {
+      position: fixed; inset: 0; z-index: 400;
+      background: rgba(17,24,39,0.45);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .paym-modal.hidden { display: none; }
+    .paym-box {
+      background: #fff; border-radius: 20px;
+      padding: 26px 22px; width: 92%; max-width: 380px;
+      text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    }
+    .paym-box h3 { font-size: 1.15rem; font-weight: 800; color: #1B4332; margin-bottom: 6px; }
+    .paym-sub  { font-size: 0.88rem; font-weight: 700; color: #6B7280; margin-bottom: 18px; }
+    .paym-btns { display: flex; gap: 10px; margin-bottom: 12px; }
+    .paym-btn {
+      flex: 1; padding: 20px 8px; border-radius: 14px;
+      font-size: 1.05rem; font-weight: 800; cursor: pointer; border: 2.5px solid;
+    }
+    .paym-btn.cash     { border-color: #FDBA74; color: #C2410C; background: #FFF7ED; }
+    .paym-btn.transfer { border-color: #93C5FD; color: #1D4ED8; background: #EFF6FF; }
+    .paym-note { font-size: 0.72rem; color: #9CA3AF; line-height: 1.5; margin-bottom: 14px; }
+    .paym-cancel {
+      width: 100%; padding: 10px; border: none; background: #F3F4F6;
+      border-radius: 10px; font-size: 0.85rem; font-weight: 700; color: #6B7280; cursor: pointer;
+    }
 
     /* ===== TOAST ===== */
     .toast {
@@ -705,6 +743,20 @@
 <!-- 월간 매출 PDF를 그렸다가 캡처하는 자리 (화면에는 보이지 않음) -->
 <div id="pdfSheet" aria-hidden="true"></div>
 
+<!-- 직원 주문 결제수단 선택 -->
+<div class="paym-modal hidden" id="payMethodModal">
+  <div class="paym-box">
+    <h3>결제수단을 선택해 주세요</h3>
+    <div class="paym-sub" id="paymSub">—</div>
+    <div class="paym-btns">
+      <button class="paym-btn cash" onclick="choosePayMethod('cash')">💵 현금</button>
+      <button class="paym-btn transfer" onclick="choosePayMethod('transfer')">🏦 계좌이체</button>
+    </div>
+    <div class="paym-note">현금은 바로 「결제완료」로 저장됩니다.<br>계좌이체는 「미결제」로 저장되어 입금 확인 후<br>주방·내역에서 「결제확인」을 누르면 됩니다.</div>
+    <button class="paym-cancel" onclick="closePayMethodModal()">돌아가기</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- ═══════════════ JAVASCRIPT ═══════════════ -->
@@ -746,6 +798,7 @@ function applyOrdersSnapshot(orders) {
   notifyNewKioskOrders();
   pruneKSelected();
   updateKNavBadge();
+  markNext();   // 번호 모달의 「사용 중」 표시·다음 번호를 최신 주문에 맞춘다
   if (currentTab === "kitchen") renderKitchen();
   if (currentTab === "history") renderHistory();
 }
@@ -933,17 +986,34 @@ function switchTab(tab) {
 }
 
 /* ══════════ ORDER SCREEN ══════════ */
-/* Number grid — 1~10번을 순서대로 자동 배정한다 */
+/* Number grid — 1~10번을 순서대로 자동 배정한다.
+   키오스크와 같은 번호대를 쓰므로, 진행 중 주문(오늘·미완료)이 쓰는 번호는 건너뛴다 */
 const NUM_MAX  = 10;
 const NEXT_KEY = "maru_next_num";
 let nextNum    = loadNextNum();
 
+/* 오늘 주문 중 완료되지 않은 주문이 쓰는 번호 = 사용 중 (키오스크·직원 주문 공통) */
+function busyNums() {
+  const today = dayKey(new Date().toISOString());
+  const s = new Set();
+  getOrders().forEach(o => {
+    if (o.orderStatus !== "completed" && dayKey(o.timestamp) === today) s.add(Number(o.customerNumber));
+  });
+  return s;
+}
+
 const numGrid = document.getElementById("numGrid");
-for (let i = 1; i <= NUM_MAX; i++) {
-  const b = document.createElement("button");
-  b.className = "num-btn"; b.textContent = i;
-  b.onclick = () => pickNum(i);
-  numGrid.appendChild(b);
+function renderNumGrid() {
+  const busy = busyNums();
+  numGrid.innerHTML = "";
+  for (let i = 1; i <= NUM_MAX; i++) {
+    const b = document.createElement("button");
+    b.className = "num-btn" + (i === nextNum ? " sel" : "");
+    b.innerHTML = busy.has(i) ? `${i}<span class="num-busy-lbl">사용중</span>` : i;
+    if (busy.has(i)) { b.disabled = true; b.title = "진행 중 주문이 쓰는 번호"; }
+    b.onclick = () => pickNum(i);
+    numGrid.appendChild(b);
+  }
 }
 markNext();
 
@@ -956,21 +1026,37 @@ function saveNextNum() {
   try { localStorage.setItem(NEXT_KEY, nextNum); } catch (e) {}
 }
 
-/* 다음에 나갈 번호를 안내 문구와 그리드에 표시 */
+/* 다음에 나갈 번호를 안내 문구와 그리드에 표시.
+   사용 중 번호는 건너뛰고, 전부 사용 중이면 기존 순번을 유지한다 */
 function markNext() {
+  const busy = busyNums();
+  if (busy.size < NUM_MAX && busy.has(nextNum)) {
+    let n = nextNum;
+    while (busy.has(n)) n = n % NUM_MAX + 1;
+    nextNum = n; saveNextNum();
+  }
   const val = document.getElementById("nextNumVal");
   if (val) val.textContent = nextNum;
-  document.querySelectorAll(".num-btn").forEach((b, i) => b.classList.toggle("sel", i + 1 === nextNum));
+  renderNumGrid();
 }
 
-/* 번호를 눌러 순번을 바꿀 수도 있다(선택 사항) */
+/* 번호를 눌러 순번을 바꿀 수도 있다(선택 사항) — 사용 중 번호는 선택 불가 */
 function pickNum(n) {
+  if (busyNums().has(n)) { showToast(`#${n}번은 진행 중 주문이 사용 중입니다`); return; }
   nextNum = n; saveNextNum(); markNext();
 }
 
 function startOrder() {
+  const busy = busyNums();
+  if (busy.size >= NUM_MAX) {
+    showToast("⚠️ 1~10번이 모두 사용 중입니다 — 번호가 겹칠 수 있으니 진행 중 주문을 완료 처리해 주세요");
+  } else if (busy.has(nextNum)) {
+    let n = nextNum;
+    while (busy.has(n)) n = n % NUM_MAX + 1;
+    nextNum = n;
+  }
   custNum = nextNum;
-  nextNum = nextNum % NUM_MAX + 1;   // 10번 다음은 다시 1번
+  nextNum = nextNum % NUM_MAX + 1;   // 10번 다음은 다시 1번 — 사용 중이면 markNext가 건너뛴다
   saveNextNum(); markNext();
   document.getElementById("numModal").classList.add("hidden");
   const badge = document.getElementById("customerBadge");
@@ -1071,7 +1157,23 @@ function toggleCart() {
 }
 
 let submitting = false;
-async function submitOrder() {
+
+/* 「주문하기」 → 결제수단(현금/계좌이체)을 먼저 고른 뒤 저장한다 */
+function submitOrder() {
+  if (!cart.length || submitting) return;
+  const total = cart.reduce((s, c) => s + c.price * c.qty, 0);
+  document.getElementById("paymSub").textContent = `손님 #${custNum} · 합계 ${total.toLocaleString("ko-KR")}원`;
+  document.getElementById("payMethodModal").classList.remove("hidden");
+}
+function closePayMethodModal() {
+  document.getElementById("payMethodModal").classList.add("hidden");
+}
+function choosePayMethod(method) {
+  closePayMethodModal();
+  submitOrderWith(method);
+}
+
+async function submitOrderWith(method) {
   if (!cart.length || submitting) return;
   const order = {
     customerNumber: custNum,
@@ -1082,7 +1184,9 @@ async function submitOrder() {
       temp: c.temp, qty: c.qty, status: "pending"
     })),
     total: cart.reduce((s, c) => s + c.price * c.qty, 0),
-    orderStatus: "pending"
+    orderStatus: "pending",
+    payMethod: method,                                       // "cash" | "transfer"
+    payStatus: method === "transfer" ? "unpaid" : "paid",    // 현금은 받은 것으로, 계좌이체는 입금 확인 후 「결제확인」
   };
   // 저장이 끝날 때까지 기다린다. 실패하면 장바구니를 그대로 두어 다시 시도할 수 있게 한다
   submitting = true;
@@ -1112,9 +1216,13 @@ async function submitOrder() {
 function kioskBadgeHTML(order) {
   return order.source === "kiosk" ? `<span class="src-badge">키오스크</span>` : "";
 }
+/* 결제수단 큰 칩 — 손님번호 옆에 붙인다. payMethod 없는 기존 주문은 표시하지 않는다 */
+function payMethodChipHTML(order) {
+  if (order.payMethod === "transfer") return `<span class="pay-method-chip transfer">🏦 계좌이체</span>`;
+  if (order.payMethod === "cash")     return `<span class="pay-method-chip cash">💵 현금</span>`;
+  return "";
+}
 function payLineHTML(order) {
-  const method = order.payMethod === "transfer" ? "🏦 계좌이체"
-               : order.payMethod === "cash"     ? "💵 현금" : "";
   let status = "";
   if (order.payStatus === "paid") {
     status = `<span class="pay-chip paid">결제완료</span>`;
@@ -1122,8 +1230,7 @@ function payLineHTML(order) {
     status = `<span class="pay-chip unpaid">미결제</span>
       <button class="pay-confirm-btn" onclick="event.stopPropagation();confirmPayment('${order.id}')">결제확인</button>`;
   }
-  if (!method && !status) return "";
-  return `<div class="pay-line">${method ? `<span class="pay-method">${method}</span>` : ""}${status}</div>`;
+  return status ? `<div class="pay-line">${status}</div>` : "";
 }
 function confirmPayment(orderId) {
   const order = getOrders().find(o => o.id === orderId);
@@ -1174,7 +1281,7 @@ function renderKitchen() {
     const t = new Date(order.timestamp).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
     return `<div class="k-card ${allSel?"sel":""}" id="kc-${order.id}" onclick="kToggle('${order.id}')">
       <div class="k-card-head">
-        <div><div class="k-cust">👤 손님 #${order.customerNumber}${kioskBadgeHTML(order)}</div>${payLineHTML(order)}</div>
+        <div><div class="k-cust">👤 손님 #${order.customerNumber}${payMethodChipHTML(order)}${kioskBadgeHTML(order)}</div>${payLineHTML(order)}</div>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="k-time">${t}</span>
           <button class="k-del-order" title="주문 전체 삭제"
@@ -1274,11 +1381,11 @@ function updateKNavBadge() {
 }
 
 /* ══════════ HISTORY SCREEN ══════════ */
-/* 결제수단별 매출 합계. payMethod가 없는 기존 주문은 「직원 주문」으로 분류 */
+/* 결제수단별 매출 합계 (키오스크·직원 주문 공통). payMethod가 없는 기존 주문은 「미지정」 */
 function payTotals(orders) {
-  const t = { transfer: 0, cash: 0, staff: 0 };
+  const t = { transfer: 0, cash: 0, none: 0 };
   orders.forEach(o => {
-    const k = o.payMethod === "transfer" ? "transfer" : o.payMethod === "cash" ? "cash" : "staff";
+    const k = o.payMethod === "transfer" ? "transfer" : o.payMethod === "cash" ? "cash" : "none";
     t[k] += o.total || 0;
   });
   return t;
@@ -1397,9 +1504,9 @@ function renderHistory() {
     <div class="sum-card"><div class="sum-lbl">완료</div><div class="sum-val green">${done}</div></div>
     <div class="sum-card"><div class="sum-lbl">대기</div><div class="sum-val orange">${pend}</div></div>
     <div class="sum-card"><div class="sum-lbl">평균</div><div class="sum-val blue">${avg.toLocaleString("ko-KR")}원</div></div>
-    <div class="sum-card"><div class="sum-lbl">🏦 계좌이체</div><div class="sum-val green">${payT.transfer.toLocaleString("ko-KR")}원</div></div>
+    <div class="sum-card"><div class="sum-lbl">🏦 계좌이체</div><div class="sum-val blue">${payT.transfer.toLocaleString("ko-KR")}원</div></div>
     <div class="sum-card"><div class="sum-lbl">💵 현금</div><div class="sum-val orange">${payT.cash.toLocaleString("ko-KR")}원</div></div>
-    <div class="sum-card"><div class="sum-lbl">직원 주문</div><div class="sum-val blue">${payT.staff.toLocaleString("ko-KR")}원</div></div>`;
+    <div class="sum-card"><div class="sum-lbl">결제수단 미지정</div><div class="sum-val purple">${payT.none.toLocaleString("ko-KR")}원</div></div>`;
 
   const hb = document.getElementById("hHeaderBadge");
   if (hb) hb.textContent = `총 ${dateSet.length}건`;
@@ -1448,7 +1555,7 @@ function renderHistory() {
       <div class="hist-row ${sc}">
         <div class="hist-row-head" onclick="hToggle('${order.id}')">
           <div class="h-dot ${sc}"></div>
-          <div><div class="h-cust-num">👤 손님 #${order.customerNumber}${kioskBadgeHTML(order)}</div><div class="h-time">${t}</div>${payLineHTML(order)}</div>
+          <div><div class="h-cust-num">👤 손님 #${order.customerNumber}${payMethodChipHTML(order)}${kioskBadgeHTML(order)}</div><div class="h-time">${t}</div>${payLineHTML(order)}</div>
           <span class="h-status-chip ${sc}">${sl}</span>
           <div class="h-total">${order.total.toLocaleString("ko-KR")}원</div>
           <button class="k-del-order" title="주문 전체 삭제"
@@ -1576,9 +1683,9 @@ function buildMonthReport(mk) {
     </tr></table>
 
     <table class="pdf-kpi" style="margin-top:8px"><tr>
-      <td style="width:33.4%"><div class="pdf-kpi-l">🏦 계좌이체 (키오스크)</div><div class="pdf-kpi-v">${money(s.payT.transfer)}</div></td>
-      <td style="width:33.3%"><div class="pdf-kpi-l">💵 현금 (키오스크)</div><div class="pdf-kpi-v">${money(s.payT.cash)}</div></td>
-      <td style="width:33.3%"><div class="pdf-kpi-l">직원 주문</div><div class="pdf-kpi-v">${money(s.payT.staff)}</div></td>
+      <td style="width:33.4%"><div class="pdf-kpi-l">🏦 계좌이체</div><div class="pdf-kpi-v">${money(s.payT.transfer)}</div></td>
+      <td style="width:33.3%"><div class="pdf-kpi-l">💵 현금</div><div class="pdf-kpi-v">${money(s.payT.cash)}</div></td>
+      <td style="width:33.3%"><div class="pdf-kpi-l">결제수단 미지정</div><div class="pdf-kpi-v">${money(s.payT.none)}</div></td>
     </tr></table>
 
     <table class="pdf-cols"><tr>

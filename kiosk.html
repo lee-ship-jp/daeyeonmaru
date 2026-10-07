@@ -145,6 +145,11 @@
       background: #E8E3DA; border-color: #DDD6C8; color: #B4AA99;
     }
     .numgrid .busy-lbl { font-size: 0.68rem; font-weight: 700; color: #B4AA99; margin-top: 2px; }
+    .num-all-busy {
+      max-width: 680px; margin: 0 auto 14px; padding: 18px 20px;
+      background: #FEF3C7; border: 2px solid #FCD34D; border-radius: 16px;
+      text-align: center; font-size: 1.05rem; font-weight: 800; color: #92400E; line-height: 1.6;
+    }
     .num-foot { flex-shrink: 0; padding: 14px 24px 26px; display: flex; gap: 12px; max-width: 680px; margin: 0 auto; width: 100%; }
     .num-foot .big-btn { flex: 1; }
     .sync-note { text-align: center; font-size: 0.75rem; color: #B4AA99; padding-bottom: 8px; }
@@ -418,6 +423,7 @@
     <p>음료가 준비되면 이 번호로 불러드립니다</p>
   </div>
   <div class="numgrid-wrap">
+    <div class="num-all-busy" id="numAllBusy" style="display:none">😮 모든 번호가 사용 중입니다.<br>잠시 후 다시 시도하거나 카운터에 문의해 주세요.</div>
     <div class="numgrid" id="numGrid"></div>
   </div>
   <div class="sync-note" id="syncNote"></div>
@@ -713,7 +719,7 @@ function makeLocalBackend() {
 const Backend = CLOUD_READY ? makeCloudBackend() : makeLocalBackend();
 
 /* ═══════════ 상태 ═══════════ */
-const KIOSK_MIN = 11, KIOSK_MAX = 40;   // 직원앱(1~10)과 겹치지 않는 키오스크 전용 번호
+const KIOSK_MIN = 1, KIOSK_MAX = 10;   // 직원앱과 같은 1~10 공용 번호 — 진행 중 주문이 쓰는 번호는 「사용 중」으로 막는다
 let screen    = "idle";
 let custNum   = null;
 let cart      = [];      // [{uid, menuId, name, price, temp, qty, opts:[{id,name,price}]}]
@@ -806,12 +812,14 @@ function busyNumbers() {
 }
 function renderNumGrid() {
   const busy = busyNumbers();
-  let html = "";
+  let html = "", freeCnt = 0;
   for (let n = KIOSK_MIN; n <= KIOSK_MAX; n++) {
     const b = busy.has(n);
+    if (!b) freeCnt++;
     html += `<button id="num-${n}" ${b ? "disabled" : ""} onclick="pickNumber(${n})">${n}${b ? '<span class="busy-lbl">사용 중</span>' : ""}</button>`;
   }
   document.getElementById("numGrid").innerHTML = html;
+  document.getElementById("numAllBusy").style.display = freeCnt === 0 ? "block" : "none";
 }
 function pickNumber(n) {
   custNum = n;
