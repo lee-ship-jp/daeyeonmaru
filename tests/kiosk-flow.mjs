@@ -29,7 +29,8 @@ fs.mkdirSync(outDir, { recursive: true });
 
 /* ── 자체 정적 서버 (저장소 루트) — 포트가 이미 쓰이고 있으면 기존 서버를 쓴다 ── */
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-               ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg" };
+               ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg",
+               ".webp": "image/webp", ".svg": "image/svg+xml" };
 const server = http.createServer((req, res) => {
   const p = decodeURIComponent(new URL(req.url, BASE).pathname);
   const f = path.normalize(path.join(root, p === "/" ? "index.html" : p));

@@ -1,0 +1,13 @@
+# Cloudflare Pages 응답 헤더 (scripts/build-cf.sh가 dist/로 복사)
+
+# 이미지: 7일 캐시 (이미지 교체 가능성 때문에 immutable·30일은 쓰지 않는다)
+/images/*
+  Cache-Control: public, max-age=604800
+
+# 서비스워커: 항상 재검증 — 배포 즉시 새 SW가 잡히게
+/sw.js
+  Cache-Control: no-cache
+
+# TWA Digital Asset Links
+/.well-known/assetlinks.json
+  Content-Type: application/json

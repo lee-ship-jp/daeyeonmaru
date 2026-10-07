@@ -71,7 +71,7 @@
     /* ═══ ① 대기 화면 — 시즌 포스터형 (hero.jpg 전체 배경) ═══ */
     #screen-idle {
       position: relative;
-      background: var(--peach-deep) url("images/kiosk/hero.jpg") no-repeat center bottom / cover;
+      background: var(--peach-deep) url("images/kiosk/hero.webp") no-repeat center bottom / cover;
       align-items: center; justify-content: space-between;
       text-align: center;
       padding: calc(32px + env(safe-area-inset-top, 0px)) 28px calc(30px + env(safe-area-inset-bottom, 0px));
@@ -1484,6 +1484,16 @@ if (Backend.cloud) {
 } else {
   setSyncStatus("local");
   Backend.refresh();
+}
+
+/* 서비스워커 — 키오스크에서만 등록(직원앱 index.html은 등록하지 않는다).
+   이미지 cache-first·셸 network-first 규칙은 sw.js 참조. */
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch((err) => {
+      console.warn("서비스워커 등록 실패(기능에는 영향 없음):", err);
+    });
+  });
 }
 </script>
 </body>

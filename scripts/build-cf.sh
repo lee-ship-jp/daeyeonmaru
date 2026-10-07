@@ -7,8 +7,10 @@ cd "$(dirname "$0")/.."
 
 rm -rf dist
 mkdir -p dist
-cp index.html kiosk.html menu.js manifest.json dist/
+cp index.html kiosk.html menu.js manifest.json sw.js _headers dist/
 cp -R images dist/images
+# TWA Digital Asset Links (.well-known/assetlinks.json) — 디렉터리가 있을 때만
+if [ -d .well-known ]; then cp -R .well-known dist/.well-known; fi
 
 echo "dist/ 준비 완료:"
 find dist -type f | sort
