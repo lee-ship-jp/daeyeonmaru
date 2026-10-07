@@ -1,0 +1,10 @@
+# Cloudflare Pages + D1 설정 — 대연마루 주문 앱
+# database_id 는 `wrangler d1 create daeyeonmaru` 실행 후 나온 값으로 채운다.
+name = "daeyeonmaru"
+compatibility_date = "2026-10-01"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "daeyeonmaru"
+database_id = "__DB_ID__"

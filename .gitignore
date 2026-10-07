@@ -6,3 +6,7 @@ gas-src/
 
 # 작업 지시서 (내부용)
 .hermes-brief-*.md
+
+# Cloudflare Pages 빌드 산출물·로컬 상태
+dist/
+.wrangler/
