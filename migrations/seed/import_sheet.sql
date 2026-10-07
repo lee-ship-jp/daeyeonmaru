@@ -1,5 +1,5 @@
 -- 구글 시트(Orders 탭) 기록 이전 — scripts/import-sheet.mjs 가 생성
--- 원본: dm-sheet-export.json · 495건 · 생성 2026-10-07T11:49:33.542Z
+-- 원본: dm-sheet-export.json · 495건 · 생성 2026-10-07T12:03:27.132Z
 -- 재실행해도 안전(INSERT OR IGNORE). active_numbers 에는 넣지 않는다(과거 기록).
 
 INSERT OR IGNORE INTO orders (id, client_order_id, customer_number, source, pay_method, pay_status, order_status, total, created_at, updated_at, deleted, deleted_at, json) VALUES ('order_1787873654542_9276', NULL, 1, 'staff', NULL, NULL, 'completed', 10500, '2026-08-27T23:34:14.542Z', '2026-08-27T23:34:14.542Z', 0, NULL, '{"customerNumber":1,"timestamp":"2026-08-27T23:34:13.644Z","items":[{"itemId":"1787873653644_0","name":"바닐라라떼","price":4000,"temp":"hot","qty":2,"status":"completed"},{"itemId":"1787873653644_1","name":"아메리카노","price":2500,"temp":"ice","qty":1,"status":"completed"}],"total":10500,"orderStatus":"completed","id":"order_1787873654542_9276","createdAt":"2026-08-27T23:34:14.542Z","source":"staff"}');

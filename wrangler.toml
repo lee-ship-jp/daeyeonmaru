@@ -7,4 +7,4 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "daeyeonmaru"
-database_id = "__DB_ID__"
+database_id = "2fa6af70-103f-4f9f-9e5b-d58bc7a10042"
