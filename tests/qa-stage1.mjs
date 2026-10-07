@@ -153,9 +153,9 @@ await test("QA-04a 저장 지연 70초: 초기화 금지·타임아웃 실패 �
   await p.click("#optAdd");
   await p.click("#cartOrderBtn");
   await p.click("#payCash");
-  await p.evaluate(() => {               // 저장 응답을 보류시킨다 (느린 서버 재현)
+  await p.evaluate(() => {               // 저장 응답을 보류시킨다 (느린 서버 재현) — v2 addOrder·구버전 add 모두
     window.__pending = null;
-    Backend.add = () => new Promise((res, rej) => { window.__pending = { res, rej }; });
+    Backend.addOrder = Backend.add = () => new Promise((res, rej) => { window.__pending = { res, rej }; });
   });
   await p.click("#cashDone");
   await p.waitForFunction(() => !!window.__pending, null, { timeout: 5000 });
@@ -182,9 +182,9 @@ await test("QA-04b 세션 토큰: 이전 저장 응답이 다음 손님 화면·
   await p.click("#optAdd");
   await p.click("#cartOrderBtn");
   await p.click("#payCash");
-  await p.evaluate(() => {
+  await p.evaluate(() => {               // v2 addOrder·구버전 add 모두 보류
     window.__pending = null;
-    Backend.add = () => new Promise((res, rej) => { window.__pending = { res, rej }; });
+    Backend.addOrder = Backend.add = () => new Promise((res, rej) => { window.__pending = { res, rej }; });
   });
   await p.click("#cashDone");
   await p.waitForFunction(() => !!window.__pending, null, { timeout: 5000 });

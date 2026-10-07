@@ -658,6 +658,7 @@ function normalizeOrder(o) {
 }
 function applyOrdersSnapshot(orders) {
   const list = Array.isArray(orders) ? orders : [];
+  serverBusyHint.clear();   // 최신 목록이 왔으니 임시 busy 힌트는 역할 끝
   ordersCache = [];
   list.forEach(o => {
     const n = normalizeOrder(o);
@@ -680,14 +681,17 @@ function makeCloudBackend() {
   const POLL_MS = 15000, POLL_MAX_MS = 60000;
   let inFlight = null, queued = false, failStreak = 0;
 
-  async function post(action, payload) {
+  async function postRaw(action, payload) {   // ok:false 응답도 그대로 돌려준다 (addOrder 분기용)
     const res = await fetch(APPS_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },   // simple request → no CORS preflight
       body: JSON.stringify({ action, payload })
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
+    return res.json();
+  }
+  async function post(action, payload) {
+    const data = await postRaw(action, payload);
     if (data && data.ok === false) throw new Error(data.error || "서버 오류");
     return data;
   }
@@ -720,48 +724,79 @@ function makeCloudBackend() {
       if (document.visibilityState === "visible") await refresh();
     }
   }
+  /* v2 서버의 addOrder — 번호 확정·멱등을 서버가 보장한다.
+     구버전 서버(응답에 version 없음·unknown action)면 null을 반환해 기존 add 방식으로 폴백,
+     number_busy/all_busy/invalid면 code·busy를 담은 오류를 던진다 */
+  async function addOrder(order) {
+    const data = await postRaw("addOrder", order);
+    if (!data || typeof data !== "object") throw new Error("서버 응답 오류");
+    if (data.ok === false) {
+      if (!data.version) return null;              // 재배포 전 구서버
+      const err = new Error(data.error || "서버 오류");
+      err.code = data.error; err.busy = data.busy;
+      throw err;
+    }
+    await refresh();
+    return data;
+  }
   return {
-    cloud: true, refresh, startPolling,
+    cloud: true, refresh, startPolling, addOrder,
     add(order)         { return post("add", order).then(refresh); },
     update(id, fields) { return post("update", { id, fields }).then(refresh); },
     remove(id)         { return post("delete", { id }).then(refresh); },
-    clearAll()         { return post("clear", {}).then(refresh); },
   };
 }
 
 function makeLocalBackend() {
   const KEY = "maru_orders", UP = "maru_update";   // index.html과 같은 키 → 로컬 모드에서도 두 앱이 주문을 공유한다
   const read  = () => JSON.parse(localStorage.getItem(KEY) || "[]");
+  const live  = a => a.filter(x => x && !x.deleted);           // 삭제 표시(soft delete)된 주문은 화면에서 제외
   const write = a => {
     localStorage.setItem(KEY, JSON.stringify(a));              // 주문 본체가 저장되면 저장 성공
     try { localStorage.setItem(UP, Date.now()); } catch (e) {} // 보조 알림 키 실패는 저장 실패로 취급하지 않는다
   };
-  window.addEventListener("storage", e => { if (e.key === KEY || e.key === UP) applyOrdersSnapshot(read()); });
+  window.addEventListener("storage", e => { if (e.key === KEY || e.key === UP) applyOrdersSnapshot(live(read())); });
   return {
     cloud: false,
-    refresh() { applyOrdersSnapshot(read()); return Promise.resolve(); },
+    refresh() { applyOrdersSnapshot(live(read())); return Promise.resolve(); },
     add(order) {
       const a = read();
       // 같은 clientOrderId가 이미 있으면 재시도 — 이미 접수된 주문이므로 중복 저장하지 않는다
       if (order.clientOrderId && a.some(x => x && x.clientOrderId === order.clientOrderId)) {
-        applyOrdersSnapshot(a); return Promise.resolve();
+        applyOrdersSnapshot(live(a)); return Promise.resolve();
       }
       order.id = "order_" + Date.now() + "_" + Math.floor(Math.random() * 1e4);
-      a.push(order); write(a); applyOrdersSnapshot(a); return Promise.resolve();
+      a.push(order); write(a); applyOrdersSnapshot(live(a)); return Promise.resolve();
+    },
+    /* v2 서버와 같은 규칙 — 멱등·번호 점유 확인을 저장 시점에 다시 한다 */
+    addOrder(order) {
+      const a = read();
+      const dup = order.clientOrderId && a.find(x => x && x.clientOrderId === order.clientOrderId);
+      if (dup) { applyOrdersSnapshot(live(a)); return Promise.resolve({ ok: true, id: dup.id, duplicate: true, number: Number(dup.customerNumber), version: 2 }); }
+      const now = Date.now(), busy = new Set();
+      live(a).forEach(o => {
+        if (o.orderStatus === "completed") return;
+        if (now - new Date(o.timestamp).getTime() > BUSY_WINDOW_MS) return;
+        busy.add(Number(o.customerNumber));
+      });
+      let freeCnt = 0;
+      for (let n = 1; n <= 10; n++) if (!busy.has(n)) freeCnt++;   // 서버와 같은 1~10 공용 번호대
+      const list = [...busy].filter(n => n >= 1 && n <= 10).sort((x, y) => x - y);
+      if (freeCnt === 0) { const e = new Error("all_busy"); e.code = "all_busy"; e.busy = list; return Promise.reject(e); }
+      if (busy.has(Number(order.customerNumber))) { const e = new Error("number_busy"); e.code = "number_busy"; e.busy = list; return Promise.reject(e); }
+      order.id = "order_" + Date.now() + "_" + Math.floor(Math.random() * 1e4);
+      a.push(order); write(a); applyOrdersSnapshot(live(a));
+      return Promise.resolve({ ok: true, id: order.id, number: Number(order.customerNumber), version: 2 });
     },
     update(id, fields) {
-      const a = read(); const o = a.find(x => x.id === id);
+      const a = read(); const o = a.find(x => x && x.id === id && !x.deleted);
       if (o) Object.assign(o, fields);
-      write(a); applyOrdersSnapshot(a); return Promise.resolve();
+      write(a); applyOrdersSnapshot(live(a)); return Promise.resolve();
     },
     remove(id) {
-      const a = read().filter(x => x.id !== id);
-      write(a); applyOrdersSnapshot(a); return Promise.resolve();
-    },
-    clearAll() {
-      localStorage.removeItem(KEY);
-      try { localStorage.setItem(UP, Date.now()); } catch (e) {}
-      applyOrdersSnapshot([]); return Promise.resolve();
+      const a = read(); const o = a.find(x => x && x.id === id);
+      if (o) { o.deleted = true; o.deletedAt = new Date().toISOString(); }   // 행을 지우지 않고 표시만 — 복구 가능
+      write(a); applyOrdersSnapshot(live(a)); return Promise.resolve();
     }
   };
 }
@@ -781,6 +816,7 @@ let lastOrder = null;
 let saving    = false;
 let kioskSession = 0;    // 손님 세션 토큰 — 처음으로 돌아갈 때마다 바뀌며, 늦게 끝난 저장이 다음 손님 화면을 못 건드리게 한다
 let pendingClientOrderId = null;   // 접수 시도마다 고정되는 주문 키 — 실패 후 재시도에 같은 키를 써서 중복 접수를 막는다
+let serverHasAddOrder = true;      // 서버가 v2(addOrder 지원)인지 — 아니라고 확인되면 기존 방식(재확인+add)으로만 저장한다
 
 /* ═══════════ 화면 전환 ═══════════ */
 function showScreen(name) {
@@ -859,9 +895,11 @@ function renderIdleReco() {
 /* 번호 점유: completed가 아닌 모든 주문(생성 후 24시간 이내) — 직원앱과 같은 기준.
    어제 미완료 주문처럼 주방에 아직 보이는 주문의 번호는 재사용하지 않는다 */
 const BUSY_WINDOW_MS = 24 * 60 * 60 * 1000;
+/* 서버 addOrder가 number_busy로 알려준 번호들 — 다음 목록 수신 전까지 그리드에 바로 반영한다 */
+const serverBusyHint = new Set();
 function busyNumbers() {
   const now = Date.now();
-  const s = new Set();
+  const s = new Set(serverBusyHint);
   getOrders().forEach(o => {
     if (o.orderStatus === "completed") return;
     const t = new Date(o.timestamp).getTime();
@@ -1087,19 +1125,6 @@ async function finalizeOrder(method) {
     armIdleTimer();
   };
 
-  // 저장 직전 목록을 다시 받아, 그 사이 같은 번호로 주문이 들어왔는지 확인한다
-  try { await withTimeout(Backend.refresh(), SAVE_TIMEOUT_MS); } catch (e) { /* 확인 실패 시에도 저장은 시도 */ }
-  if (mySession !== kioskSession) return;
-  if (busyNumbers().has(custNum)) {
-    restore();
-    showDlg({
-      icon: "😮", title: "방금 다른 손님이 이 번호를 선택했어요",
-      body: "담아 두신 메뉴는 그대로 있습니다.<br>다른 번호를 골라 주세요.",
-      buttons: [{ label: "번호 다시 선택", cls: "green", onClick: () => { closeDlg(); goNumber(); } }]
-    });
-    return;
-  }
-
   // 같은 장바구니의 재시도에는 같은 주문 키를 써서, 이미 접수된 주문의 중복 저장을 막는다
   if (!pendingClientOrderId) pendingClientOrderId = `kiosk_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   const order = {
@@ -1113,20 +1138,67 @@ async function finalizeOrder(method) {
     payMethod: method,          // "transfer" | "cash"
     payStatus: "unpaid",
   };
-  try {
-    await withTimeout(Backend.add(order), SAVE_TIMEOUT_MS);
-  } catch (err) {
-    console.error(err);
+  const busyRetryDlg = () => showDlg({
+    icon: "😮", title: "방금 다른 손님이 이 번호를 선택했어요",
+    body: "담아 두신 메뉴는 그대로 있습니다.<br>다른 번호를 골라 주세요.",
+    buttons: [{ label: "번호 다시 선택", cls: "green", onClick: () => { closeDlg(); goNumber(); } }]
+  });
+  const saveFailDlg = () => showDlg({
+    icon: "⚠️", title: "주문 저장에 실패했습니다",
+    body: "담아 두신 메뉴는 그대로 있습니다.<br>잠시 후 다시 「주문 완료」를 눌러 주세요.",
+    buttons: [{ label: "확인", cls: "green", onClick: closeDlg }]
+  });
+
+  // ① v2 서버의 addOrder — 번호 확정·중복 방지를 서버(시트) 쪽에서 한 번에 처리한다
+  let saved = null;
+  if (serverHasAddOrder) {
+    try {
+      saved = await withTimeout(Backend.addOrder(order), SAVE_TIMEOUT_MS);
+    } catch (err) {
+      if (mySession !== kioskSession) return;
+      restore();
+      if (err && err.code === "number_busy") {
+        (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
+        busyRetryDlg();
+      } else if (err && err.code === "all_busy") {
+        (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
+        showDlg({
+          icon: "😮", title: "지금은 모든 번호가 사용 중입니다",
+          body: "담아 두신 메뉴는 그대로 있습니다.<br>잠시 후 다시 시도하거나 카운터에 문의해 주세요.",
+          buttons: [{ label: "확인", cls: "green", onClick: () => { closeDlg(); goNumber(); } }]
+        });
+      } else {
+        console.error(err);
+        saveFailDlg();
+      }
+      return;
+    }
     if (mySession !== kioskSession) return;
-    restore();
-    showDlg({
-      icon: "⚠️", title: "주문 저장에 실패했습니다",
-      body: "담아 두신 메뉴는 그대로 있습니다.<br>잠시 후 다시 「주문 완료」를 눌러 주세요.",
-      buttons: [{ label: "확인", cls: "green", onClick: closeDlg }]
-    });
-    return;
+    if (saved === null) serverHasAddOrder = false;   // 재배포 전 구서버 — 이후부터 기존 방식으로
   }
-  if (mySession !== kioskSession) return;   // 늦게 끝난 저장 — 다음 손님의 화면·장바구니를 바꾸지 않는다
+
+  // ② 구버전 서버 폴백 — 저장 직전 목록을 다시 받아 번호 충돌을 클라이언트에서 확인한 뒤 add
+  if (saved === null) {
+    try { await withTimeout(Backend.refresh(), SAVE_TIMEOUT_MS); } catch (e) { /* 확인 실패 시에도 저장은 시도 */ }
+    if (mySession !== kioskSession) return;
+    if (busyNumbers().has(custNum)) {
+      restore();
+      busyRetryDlg();
+      return;
+    }
+    try {
+      await withTimeout(Backend.add(order), SAVE_TIMEOUT_MS);
+    } catch (err) {
+      console.error(err);
+      if (mySession !== kioskSession) return;
+      restore();
+      saveFailDlg();
+      return;
+    }
+    if (mySession !== kioskSession) return;
+  }
+  // 타임아웃 후 재시도가 서버의 기존 주문(duplicate)으로 확정된 경우, 실제 접수된 번호로 표시한다
+  if (saved && saved.duplicate && saved.number) order.customerNumber = Number(saved.number);
   pendingClientOrderId = null;
   lastOrder = order;
   cart = []; renderCart();

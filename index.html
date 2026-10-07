@@ -365,12 +365,6 @@
       border-radius: 8px; font-size: 0.82rem; background: #fff;
       color: #374151; cursor: pointer;
     }
-    .clear-hist-btn {
-      padding: 6px 12px; background: #EDE9FE;
-      border: none; border-radius: 8px;
-      color: #7C3AED; font-size: 0.8rem; font-weight: 700; cursor: pointer;
-    }
-    .clear-hist-btn:hover { background: #DDD6FE; }
     .filt-actions {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto;
     }
@@ -721,7 +715,6 @@
             <option value="">—</option>
           </select>
           <button class="pdf-btn" id="pdfBtn" onclick="downloadMonthPdf()">PDF로 다운받기</button>
-          <button class="clear-hist-btn" onclick="clearHistory()">🗑 전체 삭제</button>
         </div>
       </div>
       <div id="soldBreakdown"></div>
@@ -829,6 +822,7 @@ function normalizeOrder(o) {
 /* Called whenever fresh data arrives (cloud poll or local write) */
 function applyOrdersSnapshot(orders) {
   const list = Array.isArray(orders) ? orders : [];
+  serverBusyHint.clear();   // 최신 목록이 왔으니 임시 busy 힌트는 역할 끝
   ordersCache = [];
   list.forEach(o => {
     const n = normalizeOrder(o);
@@ -902,7 +896,7 @@ function makeCloudBackend() {
   const POLL_MS = 8000, POLL_MAX_MS = 60000;   // 기본 8초, 연속 실패 시 최대 60초까지
   let inFlight = null, queued = false, failStreak = 0;
 
-  async function post(action, payload) {
+  async function postRaw(action, payload) {   // ok:false 응답도 그대로 돌려준다 (addOrder 분기용)
     const res = await fetch(APPS_SCRIPT_URL, {
       method: "POST",
       // text/plain keeps this a "simple" request → no CORS preflight
@@ -910,7 +904,10 @@ function makeCloudBackend() {
       body: JSON.stringify({ action, payload })
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
+    return res.json();
+  }
+  async function post(action, payload) {
+    const data = await postRaw(action, payload);
     // 서버가 200으로 응답해도 본문에 ok:false 면 실패로 취급한다
     if (data && data.ok === false) throw new Error(data.error || "서버 오류");
     return data;
@@ -953,50 +950,82 @@ function makeCloudBackend() {
     }
   }
 
+  /* v2 서버의 addOrder — 번호 확정·멱등을 서버가 보장한다.
+     구버전 서버(응답에 version 없음·unknown action)면 null을 반환해 기존 add 방식으로 폴백,
+     number_busy/all_busy/invalid면 code·busy를 담은 오류를 던진다 */
+  async function addOrder(order) {
+    const data = await postRaw("addOrder", order);
+    if (!data || typeof data !== "object") throw new Error("서버 응답 오류");
+    if (data.ok === false) {
+      if (!data.version) return null;              // 재배포 전 구서버
+      const err = new Error(data.error || "서버 오류");
+      err.code = data.error; err.busy = data.busy;
+      throw err;
+    }
+    await refresh();
+    return data;
+  }
   return {
     cloud: true,
     refresh,
     startPolling,
+    addOrder,
     add(order)         { return post("add", order).then(refresh); },
     update(id, fields) { return post("update", { id, fields }).then(refresh); },
     remove(id)         { return post("delete", { id }).then(refresh); },
-    clearAll()         { return post("clear", {}).then(refresh); },
   };
 }
 
 function makeLocalBackend() {
   const KEY = "maru_orders", UP = "maru_update";
   const read  = () => JSON.parse(localStorage.getItem(KEY) || "[]");
+  const live  = a => a.filter(x => x && !x.deleted);           // 삭제 표시(soft delete)된 주문은 화면에서 제외
   const write = a => {
     localStorage.setItem(KEY, JSON.stringify(a));              // 주문 본체가 저장되면 저장 성공
     try { localStorage.setItem(UP, Date.now()); } catch (e) {} // 보조 알림 키 실패는 저장 실패로 취급하지 않는다
   };
-  window.addEventListener("storage", e => { if (e.key === KEY || e.key === UP) applyOrdersSnapshot(read()); });
+  window.addEventListener("storage", e => { if (e.key === KEY || e.key === UP) applyOrdersSnapshot(live(read())); });
   return {
     cloud: false,
-    refresh() { applyOrdersSnapshot(read()); return Promise.resolve(); },
+    refresh() { applyOrdersSnapshot(live(read())); return Promise.resolve(); },
     add(order) {
       const a = read();
       // 같은 clientOrderId가 이미 있으면 재시도 — 이미 접수된 주문이므로 중복 저장하지 않는다
       if (order.clientOrderId && a.some(x => x && x.clientOrderId === order.clientOrderId)) {
-        applyOrdersSnapshot(a); return Promise.resolve();
+        applyOrdersSnapshot(live(a)); return Promise.resolve();
       }
       order.id = "order_" + Date.now() + "_" + Math.floor(Math.random() * 1e4);
-      a.push(order); write(a); applyOrdersSnapshot(a); return Promise.resolve();
+      a.push(order); write(a); applyOrdersSnapshot(live(a)); return Promise.resolve();
+    },
+    /* v2 서버와 같은 규칙 — 멱등·번호 점유 확인을 저장 시점에 다시 한다 */
+    addOrder(order) {
+      const a = read();
+      const dup = order.clientOrderId && a.find(x => x && x.clientOrderId === order.clientOrderId);
+      if (dup) { applyOrdersSnapshot(live(a)); return Promise.resolve({ ok: true, id: dup.id, duplicate: true, number: Number(dup.customerNumber), version: 2 }); }
+      const now = Date.now(), busy = new Set();
+      live(a).forEach(o => {
+        if (o.orderStatus === "completed") return;
+        if (now - new Date(o.timestamp).getTime() > BUSY_WINDOW_MS) return;
+        busy.add(Number(o.customerNumber));
+      });
+      let freeCnt = 0;
+      for (let n = 1; n <= NUM_MAX; n++) if (!busy.has(n)) freeCnt++;
+      const list = [...busy].filter(n => n >= 1 && n <= NUM_MAX).sort((x, y) => x - y);
+      if (freeCnt === 0) { const e = new Error("all_busy"); e.code = "all_busy"; e.busy = list; return Promise.reject(e); }
+      if (busy.has(Number(order.customerNumber))) { const e = new Error("number_busy"); e.code = "number_busy"; e.busy = list; return Promise.reject(e); }
+      order.id = "order_" + Date.now() + "_" + Math.floor(Math.random() * 1e4);
+      a.push(order); write(a); applyOrdersSnapshot(live(a));
+      return Promise.resolve({ ok: true, id: order.id, number: Number(order.customerNumber), version: 2 });
     },
     update(id, fields) {
-      const a = read(); const o = a.find(x => x.id === id);
+      const a = read(); const o = a.find(x => x && x.id === id && !x.deleted);
       if (o) Object.assign(o, fields);
-      write(a); applyOrdersSnapshot(a); return Promise.resolve();
+      write(a); applyOrdersSnapshot(live(a)); return Promise.resolve();
     },
     remove(id) {
-      const a = read().filter(x => x.id !== id);
-      write(a); applyOrdersSnapshot(a); return Promise.resolve();
-    },
-    clearAll() {
-      localStorage.removeItem(KEY);
-      try { localStorage.setItem(UP, Date.now()); } catch (e) {}
-      applyOrdersSnapshot([]); return Promise.resolve();
+      const a = read(); const o = a.find(x => x && x.id === id);
+      if (o) { o.deleted = true; o.deletedAt = new Date().toISOString(); }   // 행을 지우지 않고 표시만 — 복구 가능
+      write(a); applyOrdersSnapshot(live(a)); return Promise.resolve();
     }
   };
 }
@@ -1046,9 +1075,11 @@ let nextNum    = loadNextNum();
 /* 번호 점유: completed가 아닌 모든 주문(생성 후 24시간 이내) — 키오스크와 같은 기준.
    어제 미완료 주문처럼 주방에 아직 보이는 주문의 번호는 재사용하지 않는다 */
 const BUSY_WINDOW_MS = 24 * 60 * 60 * 1000;
+/* 서버 addOrder가 number_busy로 알려준 번호들 — 다음 목록 수신 전까지 그리드에 바로 반영한다 */
+const serverBusyHint = new Set();
 function busyNums() {
   const now = Date.now();
-  const s = new Set();
+  const s = new Set(serverBusyHint);
   getOrders().forEach(o => {
     if (o.orderStatus === "completed") return;
     const t = new Date(o.timestamp).getTime();
@@ -1241,6 +1272,7 @@ function choosePayMethod(method) {
 }
 
 let pendingClientOrderId = null;   // 접수 시도마다 고정되는 주문 키 — 실패 후 재시도에 같은 키를 써서 중복 접수를 막는다
+let serverHasAddOrder = true;      // 서버가 v2(addOrder 지원)인지 — 아니라고 확인되면 기존 방식(재확인+add)으로만 저장한다
 
 async function submitOrderWith(method) {
   if (!cart.length || submitting) return;
@@ -1249,18 +1281,16 @@ async function submitOrderWith(method) {
   btn.disabled = true; btn.textContent = "저장 중…";
   const unlock = () => { submitting = false; btn.textContent = "주문하기"; renderCart(); };
 
-  // 저장 직전 최신 목록으로 이 번호가 진행 중인지 재확인한다 — 키오스크·다른 기기와의 중복 방지
-  try { await Backend.refresh(); } catch (e) { /* 목록 확인 실패 시에도 저장은 시도 */ }
-  if (busyNums().has(Number(custNum))) {
+  // 번호 충돌 공통 처리 — 장바구니는 유지한 채 번호만 다시 고른다
+  const askNewNumber = msg => {
     unlock();
-    showToast(`⚠️ ${custNum}번은 이미 사용 중입니다. 다른 번호를 선택해 주세요`);
+    showToast(msg);
     custNum = null;
     const badge = document.getElementById("customerBadge");
     if (badge) badge.textContent = "손님 미선택";
     markNext();
-    document.getElementById("numModal").classList.remove("hidden");   // 장바구니는 유지한 채 번호만 다시 고른다
-    return;
-  }
+    document.getElementById("numModal").classList.remove("hidden");
+  };
 
   if (!pendingClientOrderId) pendingClientOrderId = `staff_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   const order = {
@@ -1274,20 +1304,53 @@ async function submitOrderWith(method) {
     })),
     total: cart.reduce((s, c) => s + c.price * c.qty, 0),
     orderStatus: "pending",
+    source: "staff",
     payMethod: method,                                       // "cash" | "transfer"
     payStatus: method === "transfer" ? "unpaid" : "paid",    // 현금은 받은 것으로, 계좌이체는 입금 확인 후 「결제확인」
   };
-  // 저장이 끝날 때까지 기다린다. 실패하면 장바구니를 그대로 두어 다시 시도할 수 있게 한다
-  try {
-    await Backend.add(order);
-  } catch (err) {
-    console.error(err);
-    unlock();
-    showToast("⚠️ 저장 실패 — 주문이 남아 있습니다. 다시 눌러 주세요");
-    return;
+
+  // ① v2 서버의 addOrder — 번호 확정·중복 방지를 서버(시트) 쪽에서 한 번에 처리한다
+  let saved = null;
+  if (serverHasAddOrder) {
+    try {
+      saved = await Backend.addOrder(order);
+    } catch (err) {
+      if (err && err.code === "number_busy") {
+        (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
+        askNewNumber(`⚠️ ${order.customerNumber}번은 이미 사용 중입니다. 다른 번호를 선택해 주세요`);
+      } else if (err && err.code === "all_busy") {
+        (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
+        askNewNumber("⚠️ 1~10번이 모두 사용 중입니다 — 진행 중 주문을 완료 처리한 뒤 다시 시도해 주세요");
+      } else {
+        console.error(err);
+        unlock();
+        showToast("⚠️ 저장 실패 — 주문이 남아 있습니다. 다시 눌러 주세요");
+      }
+      return;
+    }
+    if (saved === null) serverHasAddOrder = false;   // 재배포 전 구서버 — 이후부터 기존 방식으로
+  }
+
+  // ② 구버전 서버 폴백 — 저장 직전 최신 목록으로 번호 충돌을 클라이언트에서 재확인한 뒤 add
+  if (saved === null) {
+    try { await Backend.refresh(); } catch (e) { /* 목록 확인 실패 시에도 저장은 시도 */ }
+    if (busyNums().has(Number(custNum))) {
+      askNewNumber(`⚠️ ${custNum}번은 이미 사용 중입니다. 다른 번호를 선택해 주세요`);
+      return;
+    }
+    // 저장이 끝날 때까지 기다린다. 실패하면 장바구니를 그대로 두어 다시 시도할 수 있게 한다
+    try {
+      await Backend.add(order);
+    } catch (err) {
+      console.error(err);
+      unlock();
+      showToast("⚠️ 저장 실패 — 주문이 남아 있습니다. 다시 눌러 주세요");
+      return;
+    }
   }
   pendingClientOrderId = null;
-  const n = custNum;
+  // 타임아웃 후 재시도가 서버의 기존 주문(duplicate)으로 확정된 경우, 실제 접수된 번호로 안내한다
+  const n = saved && saved.duplicate && saved.number ? Number(saved.number) : custNum;
   cart = []; unlock();
   showToast(`손님 #${n} 주문 완료! ✓`);
   setTimeout(() => {
@@ -1406,7 +1469,7 @@ function deleteOrder(orderId) {
   const order = getOrders().find(o => o.id === orderId);
   if (!order) return;
   const list = order.items.map(i => `· ${i.name} ×${i.qty}`).join("\n");
-  if (!confirm(`손님 #${order.customerNumber} 주문을 통째로 삭제할까요?\n\n${list}\n합계 ${order.total.toLocaleString("ko-KR")}원\n\n되돌릴 수 없습니다.`)) return;
+  if (!confirm(`손님 #${order.customerNumber} 주문을 통째로 삭제할까요?\n\n${list}\n합계 ${order.total.toLocaleString("ko-KR")}원\n\n(잘못 지웠다면 구글 시트의 AuditLog를 보고 복구할 수 있습니다)`)) return;
   order.items.forEach(i => kSelected.delete(`${orderId}::${i.itemId}`));
   hExpanded.delete(orderId);
   Backend.remove(orderId)
@@ -1917,12 +1980,6 @@ async function downloadMonthPdf() {
     btn.disabled = false;
     btn.textContent = label;
   }
-}
-
-function clearHistory() {
-  if (!confirm("모든 주문 내역을 삭제할까요? 되돌릴 수 없습니다.")) return;
-  hExpanded.clear(); kSelected.clear();
-  Backend.clearAll().catch(err => { console.error(err); showToast("⚠️ 삭제 실패 — 연결을 확인해 주세요"); });
 }
 
 /* ══════════ TOAST ══════════ */

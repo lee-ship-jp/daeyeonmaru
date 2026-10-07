@@ -1,24 +1,51 @@
-/* 키오스크 주문 흐름 E2E 검증 (Playwright) — 실제 구글 시트에 쓰지 않도록 ?local=1 로 연다.
+/* 키오스크 주문 흐름 E2E 검증 (Playwright) — 실제 구글 시트에 쓰지 않도록 ?local=1 로 열고
+   로컬 서버 밖으로 나가는 요청은 전부 차단한다.
    실행 예:
-     python3 -m http.server 8787 &            # 저장소 루트에서
-     PW_DIR=<playwright가 설치된 폴더> node tests/kiosk-flow.mjs
+     PW_DIR=/tmp/dm-pw node tests/kiosk-flow.mjs
+   8787 포트가 비어 있으면 자체 정적 서버를 띄웠다가 끝나면 닫는다(이미 떠 있으면 그대로 사용).
    스크린샷은 docs/screens/ 에 저장된다. */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
+import http from "node:http";
 
 const root  = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const pwDir = process.env.PW_DIR || root;
+const pwDir = process.env.PW_DIR || (fs.existsSync("/tmp/dm-pw/node_modules/playwright") ? "/tmp/dm-pw" : root);
 const require = createRequire(path.join(pwDir, "package.json"));
 const { chromium } = require("playwright");
 
 const BASE   = process.env.BASE_URL || "http://localhost:8787";
+const PORT   = Number(new URL(BASE).port || 80);
 const outDir = path.join(root, "docs", "screens");
 fs.mkdirSync(outDir, { recursive: true });
 
+/* ── 자체 정적 서버 (저장소 루트) — 포트가 이미 쓰이고 있으면 기존 서버를 쓴다 ── */
+const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+               ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg" };
+const server = http.createServer((req, res) => {
+  const p = decodeURIComponent(new URL(req.url, BASE).pathname);
+  const f = path.normalize(path.join(root, p === "/" ? "index.html" : p));
+  if (!f.startsWith(root)) { res.writeHead(403); res.end(); return; }
+  fs.readFile(f, (e, buf) => {
+    if (e) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { "Content-Type": MIME[path.extname(f)] || "application/octet-stream" });
+    res.end(buf);
+  });
+});
+const ownServer = await new Promise(resolve => {
+  server.once("error", e => {
+    if (e.code === "EADDRINUSE") resolve(false);   // 이미 떠 있는 서버 사용
+    else throw e;
+  });
+  server.listen(PORT, () => resolve(true));
+});
+
 const browser = await chromium.launch();
 const ctx  = await browser.newContext({ viewport: { width: 768, height: 1366 }, locale: "ko-KR" });
+/* 로컬 서버 밖(구글 시트 등)으로 나가는 요청은 전부 차단한다 */
+await ctx.route("**/*", route =>
+  route.request().url().startsWith(BASE) ? route.continue() : route.abort());
 const page = await ctx.newPage();
 const shot = name => page.screenshot({ path: path.join(outDir, name) });
 const fail = msg => { throw new Error(msg); };
@@ -134,3 +161,4 @@ await staff.screenshot({ path: path.join(outDir, "10-직원앱-내역.png") });
 
 console.log("키오스크 E2E 흐름 통과 ✓ — 스크린샷:", outDir);
 await browser.close();
+if (ownServer) server.close();
