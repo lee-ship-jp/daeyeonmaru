@@ -213,15 +213,16 @@ export async function onRequest(context) {
     }
 
     if (route[0] === "orders") {
-      if (route.length === 1 && method === "GET") return listOrders(DB, url);
+      /* return await — 핸들러의 비동기 오류가 아래 catch(500 JSON)로 잡히게 한다 */
+      if (route.length === 1 && method === "GET") return await listOrders(DB, url);
 
       /* 이하 전부 쓰기 — 같은 출처(또는 Origin 없음)만 */
       if (!originAllowed(request)) return json({ ok: false, error: "forbidden" }, 403);
 
-      if (route.length === 1 && method === "POST")   return addOrder(DB, request);
-      if (route.length === 2 && method === "PATCH")  return updateOrder(DB, request, route[1]);
-      if (route.length === 2 && method === "DELETE") return deleteOrder(DB, route[1]);
-      if (route.length === 3 && route[2] === "restore" && method === "POST") return restoreOrder(DB, route[1]);
+      if (route.length === 1 && method === "POST")   return await addOrder(DB, request);
+      if (route.length === 2 && method === "PATCH")  return await updateOrder(DB, request, route[1]);
+      if (route.length === 2 && method === "DELETE") return await deleteOrder(DB, route[1]);
+      if (route.length === 3 && route[2] === "restore" && method === "POST") return await restoreOrder(DB, route[1]);
     }
 
     return json({ ok: false, error: "not_found" }, 404);

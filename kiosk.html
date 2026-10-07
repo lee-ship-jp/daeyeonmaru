@@ -684,11 +684,14 @@ document.addEventListener("keydown", e => {
   else if (!e.shiftKey && (document.activeElement === last || !bg.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
 });
 
-/* ═══════════ 백엔드 (index.html과 같은 구조 — 복제본) ═══════════ */
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwMDteZephpg3wm_m8pObKpEDgMtXh42tG0lmF1bA2MZ5wN22zw3smbO-UFFeosu_MEJQ/exec";
-/* ?local=1 — 구글 시트에 쓰지 않는 로컬(localStorage) 전용 모드. 검증·시연용 */
+/* ═══════════ 백엔드 (index.html과 같은 구조 — 복제본) ═══════════
+   Cloudflare Pages + D1 — 같은 출처의 /api 를 사용한다. CF_URL 은 정식(새) 주소.
+   옛 GitHub Pages(github.io)로 열리면 저장하지 않고 배너 안내 후 자동 이동한다. */
+const CF_URL = "https://daeyeonmaru.pages.dev";
+/* ?local=1 — 서버에 쓰지 않는 로컬(localStorage) 전용 모드. 검증·시연용 */
 const FORCE_LOCAL = new URLSearchParams(location.search).get("local") === "1";
-const CLOUD_READY = !FORCE_LOCAL && /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(APPS_SCRIPT_URL);
+const ON_OLD_HOST = /\.github\.io$/i.test(location.hostname);
+const CLOUD_READY = !FORCE_LOCAL && !ON_OLD_HOST && location.protocol !== "file:";
 
 let ordersCache = [];
 function getOrders() { return ordersCache.slice(); }
@@ -734,28 +737,26 @@ function setSyncStatus(mode) {
 }
 
 function makeCloudBackend() {
-  const POLL_MS = 15000, POLL_MAX_MS = 60000;
+  const POLL_MS = 2000, POLL_MAX_MS = 60000;   // 기본 2초, 연속 실패 시 최대 60초까지
   let inFlight = null, queued = false, failStreak = 0;
 
-  async function postRaw(action, payload) {   // ok:false 응답도 그대로 돌려준다 (addOrder 분기용)
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },   // simple request → no CORS preflight
-      body: JSON.stringify({ action, payload })
+  async function api(method, path, body) {   // ok:false 응답도 그대로 돌려준다 (addOrder 분기용)
+    const res = await fetch("/api/" + path, {
+      method,
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
     return res.json();
   }
-  async function post(action, payload) {
-    const data = await postRaw(action, payload);
+  async function call(method, path, body) {
+    const data = await api(method, path, body);
     if (data && data.ok === false) throw new Error(data.error || "서버 오류");
     return data;
   }
   async function doRefresh() {
     try {
-      const res = await fetch(APPS_SCRIPT_URL + "?action=list&t=" + Date.now());
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
+      const data = await api("GET", "orders?t=" + Date.now());
       applyOrdersSnapshot(data.orders || []);
       failStreak = 0;
       setSyncStatus("cloud");
@@ -780,14 +781,12 @@ function makeCloudBackend() {
       if (document.visibilityState === "visible") await refresh();
     }
   }
-  /* v2 서버의 addOrder — 번호 확정·멱등을 서버가 보장한다.
-     구버전 서버(응답에 version 없음·unknown action)면 null을 반환해 기존 add 방식으로 폴백,
+  /* 주문 생성 — 번호 확정·멱등(clientOrderId)을 서버가 보장한다.
      number_busy/all_busy/invalid면 code·busy를 담은 오류를 던진다 */
   async function addOrder(order) {
-    const data = await postRaw("addOrder", order);
+    const data = await api("POST", "orders", order);
     if (!data || typeof data !== "object") throw new Error("서버 응답 오류");
     if (data.ok === false) {
-      if (!data.version) return null;              // 재배포 전 구서버
       const err = new Error(data.error || "서버 오류");
       err.code = data.error; err.busy = data.busy;
       throw err;
@@ -797,9 +796,8 @@ function makeCloudBackend() {
   }
   return {
     cloud: true, refresh, startPolling, addOrder,
-    add(order)         { return post("add", order).then(refresh); },
-    update(id, fields) { return post("update", { id, fields }).then(refresh); },
-    remove(id)         { return post("delete", { id }).then(refresh); },
+    update(id, fields) { return call("PATCH", "orders/" + encodeURIComponent(id), { fields }).then(refresh); },
+    remove(id)         { return call("DELETE", "orders/" + encodeURIComponent(id)).then(refresh); },
   };
 }
 
@@ -828,7 +826,7 @@ function makeLocalBackend() {
     addOrder(order) {
       const a = read();
       const dup = order.clientOrderId && a.find(x => x && x.clientOrderId === order.clientOrderId);
-      if (dup) { applyOrdersSnapshot(live(a)); return Promise.resolve({ ok: true, id: dup.id, duplicate: true, number: Number(dup.customerNumber), version: 2 }); }
+      if (dup) { applyOrdersSnapshot(live(a)); return Promise.resolve({ ok: true, id: dup.id, duplicate: true, number: Number(dup.customerNumber), version: 3 }); }
       const now = Date.now(), busy = new Set();
       live(a).forEach(o => {
         if (o.orderStatus === "completed") return;
@@ -842,7 +840,7 @@ function makeLocalBackend() {
       if (busy.has(Number(order.customerNumber))) { const e = new Error("number_busy"); e.code = "number_busy"; e.busy = list; return Promise.reject(e); }
       order.id = "order_" + Date.now() + "_" + Math.floor(Math.random() * 1e4);
       a.push(order); write(a); applyOrdersSnapshot(live(a));
-      return Promise.resolve({ ok: true, id: order.id, number: Number(order.customerNumber), version: 2 });
+      return Promise.resolve({ ok: true, id: order.id, number: Number(order.customerNumber), version: 3 });
     },
     update(id, fields) {
       const a = read(); const o = a.find(x => x && x.id === id && !x.deleted);
@@ -859,6 +857,20 @@ function makeLocalBackend() {
 
 const Backend = CLOUD_READY ? makeCloudBackend() : makeLocalBackend();
 
+/* ═══════════ 옛 주소(github.io) 안내 — 저장은 막고 새 주소로 보낸다 ═══════════ */
+if (ON_OLD_HOST) {
+  const target = CF_URL + "/" + (location.pathname.split("/").pop() || "") + location.search;
+  const bar = document.createElement("div");
+  bar.id = "migrateBanner";
+  bar.setAttribute("role", "alert");
+  bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#B45309;color:#fff;" +
+    "padding:14px 16px;text-align:center;font-weight:700;font-size:16px;box-shadow:0 2px 10px rgba(0,0,0,.3)";
+  bar.innerHTML = `🚚 새 주소로 이전되었습니다 → <a href="${target}" style="color:#FDE68A;text-decoration:underline">` +
+    `${CF_URL.replace("https://", "")}</a> <span style="font-weight:400">· 5초 후 자동 이동합니다</span>`;
+  document.body.appendChild(bar);
+  setTimeout(() => { location.href = target; }, 5000);
+}
+
 /* ═══════════ 상태 ═══════════ */
 const KIOSK_MIN = 1, KIOSK_MAX = 10;   // 직원앱과 같은 1~10 공용 번호 — 진행 중 주문이 쓰는 번호는 「사용 중」으로 막는다
 const SAVE_TIMEOUT_MS = 20000;         // 저장 요청 제한 시간 — 넘기면 실패 처리하고 장바구니를 유지한다
@@ -872,7 +884,6 @@ let lastOrder = null;
 let saving    = false;
 let kioskSession = 0;    // 손님 세션 토큰 — 처음으로 돌아갈 때마다 바뀌며, 늦게 끝난 저장이 다음 손님 화면을 못 건드리게 한다
 let pendingClientOrderId = null;   // 접수 시도마다 고정되는 주문 키 — 실패 후 재시도에 같은 키를 써서 중복 접수를 막는다
-let serverHasAddOrder = true;      // 서버가 v2(addOrder 지원)인지 — 아니라고 확인되면 기존 방식(재확인+add)으로만 저장한다
 
 /* ═══════════ 화면 전환 ═══════════ */
 function showScreen(name) {
@@ -1134,7 +1145,7 @@ function renderCart() {
   document.getElementById("cartCnt").textContent = cnt;
   document.getElementById("cartSum").textContent = won(total) === "무료" ? "0원" : won(total);
   const orderBtn = document.getElementById("cartOrderBtn");
-  orderBtn.disabled = cart.length === 0;
+  orderBtn.disabled = cart.length === 0 || ON_OLD_HOST;   // 옛 주소에서는 주문 등록 불가
   orderBtn.textContent = cart.length ? `주문하기 · ${cnt}개 ${total.toLocaleString("ko-KR")}원` : "주문하기";
   const body = document.getElementById("cartBody");
   body.style.display = cartOpen ? "block" : "none";
@@ -1201,6 +1212,14 @@ function buildOrderItems() {
 
 async function finalizeOrder(method) {
   if (saving || !cart.length || !custNum) return;
+  if (ON_OLD_HOST) {
+    showDlg({
+      icon: "🚚", title: "새 주소로 이전되었습니다",
+      body: `이 화면에서는 더 이상 주문이 접수되지 않습니다.<br>새 주소(${CF_URL.replace("https://", "")})에서 주문해 주세요.`,
+      buttons: [{ label: "확인", cls: "green", onClick: closeDlg }]
+    });
+    return;
+  }
   const mySession = kioskSession;   // 이 저장 작업이 속한 손님 세션 — 도중에 바뀌면 UI·장바구니를 건드리지 않는다
   saving = true;
   clearTimeout(idleTimer);          // 저장 중에는 무입력 타이머를 멈춘다 (저장 대기 중 초기화 방지)
@@ -1237,54 +1256,30 @@ async function finalizeOrder(method) {
     buttons: [{ label: "확인", cls: "green", onClick: closeDlg }]
   });
 
-  // ① v2 서버의 addOrder — 번호 확정·중복 방지를 서버(시트) 쪽에서 한 번에 처리한다
-  let saved = null;
-  if (serverHasAddOrder) {
-    try {
-      saved = await withTimeout(Backend.addOrder(order), SAVE_TIMEOUT_MS);
-    } catch (err) {
-      if (mySession !== kioskSession) return;
-      restore();
-      if (err && err.code === "number_busy") {
-        (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
-        busyRetryDlg();
-      } else if (err && err.code === "all_busy") {
-        (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
-        showDlg({
-          icon: "😮", title: "지금은 모든 번호가 사용 중입니다",
-          body: "담아 두신 메뉴는 그대로 있습니다.<br>잠시 후 다시 시도하거나 카운터에 문의해 주세요.",
-          buttons: [{ label: "확인", cls: "green", onClick: () => { closeDlg(); goNumber(); } }]
-        });
-      } else {
-        console.error(err);
-        saveFailDlg();
-      }
-      return;
-    }
+  // 번호 확정·중복 방지(clientOrderId 멱등)는 서버(D1)가 한 번에 처리한다
+  let saved;
+  try {
+    saved = await withTimeout(Backend.addOrder(order), SAVE_TIMEOUT_MS);
+  } catch (err) {
     if (mySession !== kioskSession) return;
-    if (saved === null) serverHasAddOrder = false;   // 재배포 전 구서버 — 이후부터 기존 방식으로
-  }
-
-  // ② 구버전 서버 폴백 — 저장 직전 목록을 다시 받아 번호 충돌을 클라이언트에서 확인한 뒤 add
-  if (saved === null) {
-    try { await withTimeout(Backend.refresh(), SAVE_TIMEOUT_MS); } catch (e) { /* 확인 실패 시에도 저장은 시도 */ }
-    if (mySession !== kioskSession) return;
-    if (busyNumbers().has(custNum)) {
-      restore();
+    restore();
+    if (err && err.code === "number_busy") {
+      (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
       busyRetryDlg();
-      return;
-    }
-    try {
-      await withTimeout(Backend.add(order), SAVE_TIMEOUT_MS);
-    } catch (err) {
+    } else if (err && err.code === "all_busy") {
+      (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
+      showDlg({
+        icon: "😮", title: "지금은 모든 번호가 사용 중입니다",
+        body: "담아 두신 메뉴는 그대로 있습니다.<br>잠시 후 다시 시도하거나 카운터에 문의해 주세요.",
+        buttons: [{ label: "확인", cls: "green", onClick: () => { closeDlg(); goNumber(); } }]
+      });
+    } else {
       console.error(err);
-      if (mySession !== kioskSession) return;
-      restore();
       saveFailDlg();
-      return;
     }
-    if (mySession !== kioskSession) return;
+    return;
   }
+  if (mySession !== kioskSession) return;
   // 타임아웃 후 재시도가 서버의 기존 주문(duplicate)으로 확정된 경우, 실제 접수된 번호로 표시한다
   if (saved && saved.duplicate && saved.number) order.customerNumber = Number(saved.number);
   pendingClientOrderId = null;

@@ -1,9 +1,14 @@
-/* 키오스크 주문 흐름 E2E 검증 (Playwright) — 실제 구글 시트에 쓰지 않도록 ?local=1 로 열고
+/* 키오스크 주문 흐름 E2E 검증 (Playwright) — 기본은 ?local=1 로 열고(서버에 쓰지 않음)
    로컬 서버 밖으로 나가는 요청은 전부 차단한다.
    실행 예:
      PW_DIR=/tmp/dm-pw node tests/kiosk-flow.mjs
    8787 포트가 비어 있으면 자체 정적 서버를 띄웠다가 끝나면 닫는다(이미 떠 있으면 그대로 사용).
-   스크린샷은 docs/screens/ 에 저장된다. */
+   스크린샷은 docs/screens/ 에 저장된다.
+
+   API 모드 — 로컬 wrangler pages dev(D1) 를 상대로 같은 흐름을 검증:
+     API_MODE=1 BASE_URL=http://127.0.0.1:8796 PW_DIR=/tmp/dm-pw node tests/kiosk-flow.mjs
+   (?local=1 없이 열어 /api 로 저장·조회. 주문이 없는 새 D1 상태에서 실행해야 하며,
+    스크린샷은 docs/ 를 더럽히지 않게 .qa/screens-api/ 에 저장된다) */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,9 +20,11 @@ const pwDir = process.env.PW_DIR || (fs.existsSync("/tmp/dm-pw/node_modules/play
 const require = createRequire(path.join(pwDir, "package.json"));
 const { chromium } = require("playwright");
 
+const API    = process.env.API_MODE === "1";          // 1 = pages dev(/api) 모드, 기본 = ?local=1
 const BASE   = process.env.BASE_URL || "http://localhost:8787";
 const PORT   = Number(new URL(BASE).port || 80);
-const outDir = path.join(root, "docs", "screens");
+const Q      = API ? "" : "?local=1";
+const outDir = API ? path.join(root, ".qa", "screens-api") : path.join(root, "docs", "screens");
 fs.mkdirSync(outDir, { recursive: true });
 
 /* ── 자체 정적 서버 (저장소 루트) — 포트가 이미 쓰이고 있으면 기존 서버를 쓴다 ── */
@@ -49,9 +56,13 @@ await ctx.route("**/*", route =>
 const page = await ctx.newPage();
 const shot = name => page.screenshot({ path: path.join(outDir, name) });
 const fail = msg => { throw new Error(msg); };
+/* 저장된 주문 읽기 — 로컬 모드는 localStorage, API 모드는 /api/orders */
+const readOrders = p => API
+  ? p.evaluate(() => fetch("/api/orders?t=" + Date.now()).then(r => r.json()).then(d => d.orders || []))
+  : p.evaluate(() => JSON.parse(localStorage.getItem("maru_orders") || "[]"));
 
 /* ── 키오스크: 대기 → 번호 → 메뉴 담기 → 계좌이체 → 완료 ── */
-await page.goto(`${BASE}/kiosk.html?local=1`);
+await page.goto(`${BASE}/kiosk.html${Q}`);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await page.waitForSelector("#screen-idle.active");
@@ -91,7 +102,7 @@ await page.waitForSelector("#screen-done.active");
 await shot("08-완료.png");
 
 /* 저장된 주문 검증: (마루라떼4000+샷500)×2 + 딸기라떼4000 = 13000 */
-const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("maru_orders") || "[]"));
+const saved = await readOrders(page);
 if (saved.length !== 1) fail(`저장된 주문이 1건이 아님: ${saved.length}`);
 const o = saved[0];
 if (o.customerNumber !== 3)       fail("customerNumber ≠ 3");
@@ -112,7 +123,7 @@ if (!await page.$eval("#num-3", b => b.disabled)) fail("주문 후 3번이 사�
 /* ── 직원앱(index.html?local=1): 같은 localStorage 공유 확인 ── */
 await page.evaluate(() => localStorage.setItem("maru_next_num", "3"));   // 사용 중 번호 건너뛰기 검증용
 const staff = await ctx.newPage();
-await staff.goto(`${BASE}/index.html?local=1`);
+await staff.goto(`${BASE}/index.html${Q}`);
 /* 번호 모달: 진행 중 키오스크 주문(3번)이 「사용중」으로 비활성화돼야 한다 */
 await staff.waitForSelector("#numModal .num-btn:disabled");
 const busyCnt = await staff.$$eval("#numModal .num-btn:disabled", els => els.length);
@@ -128,8 +139,11 @@ await staff.click("#orderBtn");
 await staff.waitForSelector("#payMethodModal:not(.hidden)");
 await staff.screenshot({ path: path.join(outDir, "11-직원앱-결제수단.png") });
 await staff.click(".paym-btn.cash");
-await staff.waitForFunction(() => JSON.parse(localStorage.getItem("maru_orders") || "[]").length === 2);
-const so = await staff.evaluate(() => JSON.parse(localStorage.getItem("maru_orders"))[1]);
+if (API) await staff.waitForFunction(
+  () => fetch("/api/orders?t=" + Date.now()).then(r => r.json()).then(d => (d.orders || []).length === 2),
+  null, { polling: 500 });
+else await staff.waitForFunction(() => JSON.parse(localStorage.getItem("maru_orders") || "[]").length === 2);
+const so = (await readOrders(staff)).find(o => o.source === "staff");
 if (so.customerNumber !== 4)   fail(`직원 주문 번호 ≠ 4 (실제 ${so.customerNumber})`);
 if (so.payMethod !== "cash")   fail("직원 주문 payMethod ≠ cash");
 if (so.payStatus !== "paid")   fail("직원 현금 주문 payStatus ≠ paid");

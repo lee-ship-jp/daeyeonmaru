@@ -801,14 +801,14 @@ let hExpanded  = new Set();
 MENU.forEach(m => { qtyMap[m.id] = 1; if (m.hasTemp) tempMap[m.id] = "ice"; });
 
 /* ─── CLOUD CONFIG ────────────────────────────────────────────────
-   아래 따옴표 사이에 대연마루 전용 Google Apps Script 웹앱 URL을
-   붙여넣으세요 (APPS_SCRIPT_SETUP.md 참고). 형식:
-     https://script.google.com/macros/s/AKfy..../exec
-   URL이 없으면 이 기기에서만 저장되는 로컬 모드로 동작합니다.      */
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwMDteZephpg3wm_m8pObKpEDgMtXh42tG0lmF1bA2MZ5wN22zw3smbO-UFFeosu_MEJQ/exec";
-/* ?local=1 — 구글 시트에 쓰지 않는 로컬(localStorage) 전용 모드. 검증·시연용 */
+   Cloudflare Pages + D1 백엔드 — 같은 출처의 /api 를 사용합니다.
+   CF_URL 은 정식(새) 주소. 옛 GitHub Pages(github.io)로 열리면
+   더 이상 저장하지 않고, 배너로 안내한 뒤 새 주소로 자동 이동합니다. */
+const CF_URL = "https://daeyeonmaru.pages.dev";
+/* ?local=1 — 서버에 쓰지 않는 로컬(localStorage) 전용 모드. 검증·시연용 */
 const FORCE_LOCAL = new URLSearchParams(location.search).get("local") === "1";
-const CLOUD_READY = !FORCE_LOCAL && /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(APPS_SCRIPT_URL);
+const ON_OLD_HOST = /\.github\.io$/i.test(location.hostname);
+const CLOUD_READY = !FORCE_LOCAL && !ON_OLD_HOST && location.protocol !== "file:";
 
 /* ─── ORDER CACHE (single source of truth for every screen) ─── */
 let ordersCache = [];
@@ -931,35 +931,32 @@ function setSyncStatus(mode) {
   if (mode === "cloud")        { el.textContent = "☁️ 동기화";  el.title = "클라우드 동기화 중 — 모든 기기에서 공유됩니다"; el.className = "sync-pill cloud"; }
   else if (mode === "syncing") { el.textContent = "⏳ 연결 중"; el.title = "클라우드에 연결하는 중…";                     el.className = "sync-pill cloud"; }
   else if (mode === "error")   { el.textContent = "⚠️ 오프라인"; el.title = "클라우드 연결 실패 — 재시도 중";             el.className = "sync-pill error"; }
-  else                         { el.textContent = "📴 로컬";    el.title = "이 기기에만 저장 — 공유하려면 웹앱 URL을 등록하세요"; el.className = "sync-pill local"; }
+  else                         { el.textContent = "📴 로컬";    el.title = "이 기기에만 저장되는 로컬 모드 — 공유하려면 정식 주소에서 여세요"; el.className = "sync-pill local"; }
 }
 
-/* ─── BACKEND: Google Apps Script (cloud) or localStorage (fallback) ─── */
+/* ─── BACKEND: Cloudflare Pages Functions + D1 (cloud) or localStorage (fallback) ─── */
 function makeCloudBackend() {
-  const POLL_MS = 8000, POLL_MAX_MS = 60000;   // 기본 8초, 연속 실패 시 최대 60초까지
+  const POLL_MS = 2000, POLL_MAX_MS = 60000;   // 기본 2초, 연속 실패 시 최대 60초까지
   let inFlight = null, queued = false, failStreak = 0;
 
-  async function postRaw(action, payload) {   // ok:false 응답도 그대로 돌려준다 (addOrder 분기용)
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: "POST",
-      // text/plain keeps this a "simple" request → no CORS preflight
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action, payload })
+  async function api(method, path, body) {   // ok:false 응답도 그대로 돌려준다 (addOrder 분기용)
+    const res = await fetch("/api/" + path, {
+      method,
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
     return res.json();
   }
-  async function post(action, payload) {
-    const data = await postRaw(action, payload);
+  async function call(method, path, body) {
+    const data = await api(method, path, body);
     // 서버가 200으로 응답해도 본문에 ok:false 면 실패로 취급한다
     if (data && data.ok === false) throw new Error(data.error || "서버 오류");
     return data;
   }
   async function doRefresh() {
     try {
-      const res = await fetch(APPS_SCRIPT_URL + "?action=list&t=" + Date.now());
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
+      const data = await api("GET", "orders?t=" + Date.now());   // 기본 최근 60일 (매출·PDF는 fetchAll)
       applyOrdersSnapshot(data.orders || []);
       failStreak = 0;
       setSyncStatus("cloud");
@@ -971,8 +968,6 @@ function makeCloudBackend() {
   }
 
   /* 앞 요청이 끝나기 전에는 새로 보내지 않는다.
-     Apps Script가 간헐적으로 15~45초까지 느려지므로, 그대로 두면 요청이 쌓여
-     실행 한도를 갉아먹고 오래된 응답이 최신 상태를 덮어쓴다.
      진행 중에 요청이 겹치면 끝난 뒤 한 번만 더 돌린다(최신 상태 보장). */
   function refresh() {
     if (inFlight) { queued = true; return inFlight; }
@@ -993,14 +988,12 @@ function makeCloudBackend() {
     }
   }
 
-  /* v2 서버의 addOrder — 번호 확정·멱등을 서버가 보장한다.
-     구버전 서버(응답에 version 없음·unknown action)면 null을 반환해 기존 add 방식으로 폴백,
+  /* 주문 생성 — 번호 확정·멱등(clientOrderId)을 서버가 보장한다.
      number_busy/all_busy/invalid면 code·busy를 담은 오류를 던진다 */
   async function addOrder(order) {
-    const data = await postRaw("addOrder", order);
+    const data = await api("POST", "orders", order);
     if (!data || typeof data !== "object") throw new Error("서버 응답 오류");
     if (data.ok === false) {
-      if (!data.version) return null;              // 재배포 전 구서버
       const err = new Error(data.error || "서버 오류");
       err.code = data.error; err.busy = data.busy;
       throw err;
@@ -1013,9 +1006,10 @@ function makeCloudBackend() {
     refresh,
     startPolling,
     addOrder,
-    add(order)         { return post("add", order).then(refresh); },
-    update(id, fields) { return post("update", { id, fields }).then(refresh); },
-    remove(id)         { return post("delete", { id }).then(refresh); },
+    /* 매출·PDF용 전체 내역(?all=1) — 폴링 목록(최근 60일)과 별개로 그때만 가져온다 */
+    fetchAll()         { return api("GET", "orders?all=1&t=" + Date.now()).then(d => (d && d.orders) || []); },
+    update(id, fields) { return call("PATCH", "orders/" + encodeURIComponent(id), { fields }).then(refresh); },
+    remove(id)         { return call("DELETE", "orders/" + encodeURIComponent(id)).then(refresh); },
   };
 }
 
@@ -1044,7 +1038,7 @@ function makeLocalBackend() {
     addOrder(order) {
       const a = read();
       const dup = order.clientOrderId && a.find(x => x && x.clientOrderId === order.clientOrderId);
-      if (dup) { applyOrdersSnapshot(live(a)); return Promise.resolve({ ok: true, id: dup.id, duplicate: true, number: Number(dup.customerNumber), version: 2 }); }
+      if (dup) { applyOrdersSnapshot(live(a)); return Promise.resolve({ ok: true, id: dup.id, duplicate: true, number: Number(dup.customerNumber), version: 3 }); }
       const now = Date.now(), busy = new Set();
       live(a).forEach(o => {
         if (o.orderStatus === "completed") return;
@@ -1058,7 +1052,7 @@ function makeLocalBackend() {
       if (busy.has(Number(order.customerNumber))) { const e = new Error("number_busy"); e.code = "number_busy"; e.busy = list; return Promise.reject(e); }
       order.id = "order_" + Date.now() + "_" + Math.floor(Math.random() * 1e4);
       a.push(order); write(a); applyOrdersSnapshot(live(a));
-      return Promise.resolve({ ok: true, id: order.id, number: Number(order.customerNumber), version: 2 });
+      return Promise.resolve({ ok: true, id: order.id, number: Number(order.customerNumber), version: 3 });
     },
     update(id, fields) {
       const a = read(); const o = a.find(x => x && x.id === id && !x.deleted);
@@ -1074,6 +1068,20 @@ function makeLocalBackend() {
 }
 
 const Backend = CLOUD_READY ? makeCloudBackend() : makeLocalBackend();
+
+/* ─── 옛 주소(github.io) 안내 — 이중 기록 방지를 위해 저장은 막고 새 주소로 보낸다 ─── */
+if (ON_OLD_HOST) {
+  const target = CF_URL + "/" + (location.pathname.split("/").pop() || "") + location.search;
+  const bar = document.createElement("div");
+  bar.id = "migrateBanner";
+  bar.setAttribute("role", "alert");
+  bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#B45309;color:#fff;" +
+    "padding:14px 16px;text-align:center;font-weight:700;font-size:16px;box-shadow:0 2px 10px rgba(0,0,0,.3)";
+  bar.innerHTML = `🚚 새 주소로 이전되었습니다 → <a href="${target}" style="color:#FDE68A;text-decoration:underline">` +
+    `${CF_URL.replace("https://", "")}</a> <span style="font-weight:400">· 5초 후 자동 이동합니다</span>`;
+  document.body.appendChild(bar);
+  setTimeout(() => { location.href = target; }, 5000);
+}
 
 /* ─── TAB SWITCHING ─── */
 const TAB_META = {
@@ -1274,7 +1282,7 @@ function renderCart() {
   const totalPrc  = cart.reduce((s, c) => s + c.price * c.qty, 0);
   document.getElementById("cartCnt").textContent = totalQty;
   document.getElementById("cartAmt").textContent = `${totalPrc.toLocaleString("ko-KR")}원`;
-  document.getElementById("orderBtn").disabled = cart.length === 0;
+  document.getElementById("orderBtn").disabled = cart.length === 0 || ON_OLD_HOST;   // 옛 주소에서는 주문 등록 불가
   const body = document.getElementById("cartBody");
   if (!cartOpen) { body.innerHTML = ""; return; }
   body.innerHTML = cart.length === 0
@@ -1342,10 +1350,10 @@ document.addEventListener("keydown", e => {
 });
 
 let pendingClientOrderId = null;   // 접수 시도마다 고정되는 주문 키 — 실패 후 재시도에 같은 키를 써서 중복 접수를 막는다
-let serverHasAddOrder = true;      // 서버가 v2(addOrder 지원)인지 — 아니라고 확인되면 기존 방식(재확인+add)으로만 저장한다
 
 async function submitOrderWith(method) {
   if (!cart.length || submitting) return;
+  if (ON_OLD_HOST) { showToast("🚚 새 주소로 이전되었습니다 — 새 주소에서 주문해 주세요"); return; }
   submitting = true;
   const btn = document.getElementById("orderBtn");
   btn.disabled = true; btn.textContent = "저장 중…";
@@ -1379,44 +1387,23 @@ async function submitOrderWith(method) {
     payStatus: method === "transfer" ? "unpaid" : "paid",    // 현금은 받은 것으로, 계좌이체는 입금 확인 후 「결제확인」
   };
 
-  // ① v2 서버의 addOrder — 번호 확정·중복 방지를 서버(시트) 쪽에서 한 번에 처리한다
-  let saved = null;
-  if (serverHasAddOrder) {
-    try {
-      saved = await Backend.addOrder(order);
-    } catch (err) {
-      if (err && err.code === "number_busy") {
-        (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
-        askNewNumber(`⚠️ ${order.customerNumber}번은 이미 사용 중입니다. 다른 번호를 선택해 주세요`);
-      } else if (err && err.code === "all_busy") {
-        (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
-        askNewNumber("⚠️ 1~10번이 모두 사용 중입니다 — 진행 중 주문을 완료 처리한 뒤 다시 시도해 주세요");
-      } else {
-        console.error(err);
-        unlock();
-        showToast("⚠️ 저장 실패 — 주문이 남아 있습니다. 다시 눌러 주세요");
-      }
-      return;
-    }
-    if (saved === null) serverHasAddOrder = false;   // 재배포 전 구서버 — 이후부터 기존 방식으로
-  }
-
-  // ② 구버전 서버 폴백 — 저장 직전 최신 목록으로 번호 충돌을 클라이언트에서 재확인한 뒤 add
-  if (saved === null) {
-    try { await Backend.refresh(); } catch (e) { /* 목록 확인 실패 시에도 저장은 시도 */ }
-    if (busyNums().has(Number(custNum))) {
-      askNewNumber(`⚠️ ${custNum}번은 이미 사용 중입니다. 다른 번호를 선택해 주세요`);
-      return;
-    }
-    // 저장이 끝날 때까지 기다린다. 실패하면 장바구니를 그대로 두어 다시 시도할 수 있게 한다
-    try {
-      await Backend.add(order);
-    } catch (err) {
+  // 번호 확정·중복 방지(clientOrderId 멱등)는 서버(D1)가 한 번에 처리한다
+  let saved;
+  try {
+    saved = await Backend.addOrder(order);
+  } catch (err) {
+    if (err && err.code === "number_busy") {
+      (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
+      askNewNumber(`⚠️ ${order.customerNumber}번은 이미 사용 중입니다. 다른 번호를 선택해 주세요`);
+    } else if (err && err.code === "all_busy") {
+      (err.busy || []).forEach(n => serverBusyHint.add(Number(n)));
+      askNewNumber("⚠️ 1~10번이 모두 사용 중입니다 — 진행 중 주문을 완료 처리한 뒤 다시 시도해 주세요");
+    } else {
       console.error(err);
       unlock();
       showToast("⚠️ 저장 실패 — 주문이 남아 있습니다. 다시 눌러 주세요");
-      return;
     }
+    return;
   }
   pendingClientOrderId = null;
   // 타임아웃 후 재시도가 서버의 기존 주문(duplicate)으로 확정된 경우, 실제 접수된 번호로 안내한다
@@ -1863,9 +1850,10 @@ function shortDay(key) {
 }
 
 /* 한 달치 주문을 일자별·메뉴별로 집계한다.
-   「…잔」은 음료만 센다 — 옵션(cat:"option")은 제외, 디저트는 「디저트 N개」로 따로(QA-10) */
-function monthStats(mk) {
-  const orders = getOrders().filter(o => monthKey(o.timestamp) === mk);
+   「…잔」은 음료만 센다 — 옵션(cat:"option")은 제외, 디저트는 「디저트 N개」로 따로(QA-10)
+   source를 주면(전체 내역 ?all=1) 그것으로, 없으면 화면 캐시(최근 60일)로 집계한다 */
+function monthStats(mk, source) {
+  const orders = (source || getOrders()).filter(o => monthKey(o.timestamp) === mk);
   const dayMap = {}, menuMap = {};
   let drinkQty = 0, dessertQty = 0;
   orders.forEach(o => {
@@ -1897,8 +1885,8 @@ function monthStats(mk) {
 }
 
 /* A4 한 장짜리 월간 매출 보고서 HTML */
-function buildMonthReport(mk) {
-  const s     = monthStats(mk);
+function buildMonthReport(mk, source) {
+  const s     = monthStats(mk, source);
   const money = n => `${n.toLocaleString("ko-KR")}원`;
   const [y, m] = mk.split("-").map(Number);
   const lastDay = new Date(y, m, 0).getDate();
@@ -2056,9 +2044,16 @@ async function downloadMonthPdf() {
   const btn   = document.getElementById("pdfBtn");
   const sheet = document.getElementById("pdfSheet");
   const label = btn.textContent;
-  sheet.innerHTML = buildMonthReport(mk);
   btn.disabled = true;
   btn.textContent = "⏳ 만드는 중…";
+  /* 화면 캐시는 최근 60일만 담으므로, 매출 보고서는 전체 내역(?all=1)으로 집계한다.
+     전체 조회에 실패하면 화면 데이터로라도 만든다 */
+  let source = null;
+  if (Backend.fetchAll) {
+    try { source = (await Backend.fetchAll()).map(normalizeOrder).filter(Boolean); }
+    catch (e) { console.error("전체 내역 조회 실패 — 최근 60일 데이터로 집계합니다", e); }
+  }
+  sheet.innerHTML = buildMonthReport(mk, source);
   try {
     await loadPdfLibs();
     const canvas = await window.html2canvas(sheet.firstElementChild, {
