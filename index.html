@@ -46,6 +46,13 @@
     .sync-pill.cloud { background: rgba(110,231,183,0.35); }
     .sync-pill.local { background: rgba(255,255,255,0.22); }
     .sync-pill.error { background: #DC2626; }
+    /* 알림음 상태/테스트 버튼 (QA-12) — 켜지기 전에는 눈에 띄게, 켜지면 ✓ 표시 */
+    .sound-btn {
+      min-height: 48px; padding: 4px 12px; border: none; border-radius: 999px;
+      background: #F59E0B; color: #fff; font-size: 0.78rem; font-weight: 800;
+      cursor: pointer; white-space: nowrap;
+    }
+    .sound-btn.on { background: rgba(255,255,255,0.22); }
 
     /* ===== BOTTOM NAV ===== */
     .bottom-nav {
@@ -119,7 +126,7 @@
     }
     .num-btn {
       border: 1px solid #E5E7EB; background: #fff; border-radius: 8px;
-      padding: 7px 0; font-size: 0.82rem; font-weight: 700; color: #6B7280;
+      min-height: 48px; padding: 7px 0; font-size: 0.82rem; font-weight: 700; color: #6B7280;
       cursor: pointer; transition: all 0.15s;
     }
     .num-btn:hover  { border-color: #40916C; color: #40916C; background: #F0FDF4; }
@@ -172,7 +179,7 @@
     .item-prc { font-size: 1rem; font-weight: 800; color: #1B4332; white-space: nowrap; }
     .temp-row { display: flex; gap: 6px; margin-bottom: 10px; }
     .temp-btn {
-      flex: 1; padding: 6px 0;
+      flex: 1; min-height: 48px; padding: 6px 0;
       border: 2px solid #E5E7EB; border-radius: 8px;
       font-size: 0.82rem; font-weight: 700; cursor: pointer; background: #fff;
       transition: all 0.15s;
@@ -184,14 +191,14 @@
     .card-btm { display: flex; align-items: center; gap: 6px; }
     .qty-wrap { display: flex; align-items: center; gap: 5px; }
     .qty-btn {
-      width: 28px; height: 28px; background: #F3F4F6;
-      border: none; border-radius: 7px; font-size: 1rem;
+      width: 48px; height: 48px; background: #F3F4F6;
+      border: none; border-radius: 7px; font-size: 1.1rem;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
     }
     .qty-btn:hover { background: #D1FAE5; color: #1B4332; }
     .qty-num { font-size: 0.95rem; font-weight: 700; min-width: 20px; text-align: center; }
     .add-btn {
-      margin-left: auto; padding: 6px 16px;
+      margin-left: auto; min-height: 48px; padding: 6px 16px;
       background: #1B4332; color: #fff;
       border: none; border-radius: 8px;
       font-size: 0.82rem; font-weight: 700; cursor: pointer;
@@ -207,7 +214,7 @@
     }
     .cart-panel.screen-hidden { display: none; }
     .cart-head {
-      padding: 10px 14px; cursor: pointer;
+      min-height: 48px; padding: 10px 14px; cursor: pointer;
       display: flex; align-items: center; justify-content: space-between;
       background: #F0FDF4; border-bottom: 1px solid #D1FAE5;
       flex-shrink: 0;
@@ -226,7 +233,11 @@
     .cart-item-name  { font-size: 0.88rem; font-weight: 600; color: #111827; }
     .cart-item-sub   { font-size: 0.75rem; color: #9CA3AF; margin-top: 1px; }
     .cart-item-price { font-size: 0.88rem; font-weight: 700; color: #1B4332; white-space: nowrap; }
-    .cart-del { background: none; border: none; color: #D1D5DB; font-size: 0.9rem; cursor: pointer; padding: 2px 4px; }
+    .cart-del {
+      background: none; border: none; color: #D1D5DB; font-size: 0.9rem; cursor: pointer;
+      min-width: 48px; min-height: 48px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
     .cart-del:hover { color: #EF4444; }
     .cart-foot {
       padding: 10px 14px; border-top: 2px solid #D1FAE5;
@@ -240,7 +251,7 @@
       font-size: 0.72rem; color: #6B7280; text-align: center; flex-shrink: 0;
     }
     .order-btn {
-      padding: 11px 24px; background: #1B4332; color: #fff;
+      min-height: 48px; padding: 11px 24px; background: #1B4332; color: #fff;
       border: none; border-radius: 10px;
       font-size: 0.95rem; font-weight: 800; cursor: pointer;
     }
@@ -259,13 +270,13 @@
     }
     .k-action-bar h2 { font-size: 1rem; color: #92400E; font-weight: 800; flex: 1; }
     .k-sel-all-btn {
-      padding: 7px 14px; background: #fff;
+      min-height: 48px; padding: 7px 14px; background: #fff;
       border: 2px solid #D97706; color: #D97706;
       border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer;
     }
     .k-sel-all-btn:hover { background: #FFFBEB; }
     .k-done-btn {
-      padding: 9px 22px; background: #16A34A; color: #fff;
+      min-height: 48px; padding: 9px 22px; background: #16A34A; color: #fff;
       border: none; border-radius: 8px;
       font-size: 0.9rem; font-weight: 800; cursor: pointer;
     }
@@ -291,7 +302,7 @@
     }
     .k-card.sel .k-card-head { background: #DCFCE7; border-color: #86EFAC; }
     .k-cust { font-size: 0.95rem; font-weight: 800; color: #92400E; }
-    .k-time { font-size: 0.72rem; color: #9CA3AF; }
+    .k-time { font-size: 0.72rem; color: #9CA3AF; white-space: nowrap; }   /* 주방 카드 시간 줄바꿈 방지 (QA-11) */
     .k-check {
       width: 22px; height: 22px; border-radius: 999px;
       border: 2px solid #D1D5DB; background: #fff;
@@ -319,14 +330,18 @@
     }
     .k-del-order {
       background: none; border: none; cursor: pointer;
-      font-size: 0.95rem; line-height: 1; padding: 4px 6px;
+      font-size: 0.95rem; line-height: 1;
+      min-width: 48px; min-height: 48px;
+      display: inline-flex; align-items: center; justify-content: center;
       border-radius: 7px; opacity: 0.4; transition: all 0.15s;
     }
     .k-del-order:hover { opacity: 1; background: #FEE2E2; }
     .k-del-item {
       background: none; border: none; cursor: pointer;
       color: #D1D5DB; font-size: 0.85rem; font-weight: 700;
-      padding: 2px 6px; border-radius: 5px; transition: all 0.15s;
+      min-width: 48px; min-height: 48px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 5px; transition: all 0.15s;
     }
     .k-del-item:hover { color: #EF4444; background: #FEF2F2; }
     .k-empty {
@@ -369,7 +384,7 @@
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto;
     }
     .pdf-btn {
-      padding: 6px 12px; background: #16A34A; border: none; border-radius: 8px;
+      min-height: 48px; padding: 6px 12px; background: #16A34A; border: none; border-radius: 8px;
       color: #fff; font-size: 0.8rem; font-weight: 700; cursor: pointer;
     }
     .pdf-btn:hover:not(:disabled) { background: #15803D; }
@@ -560,7 +575,7 @@
     .pay-chip.unpaid { background: #FEE2E2; color: #DC2626; }
     .pay-chip.paid   { background: #DCFCE7; color: #16A34A; }
     .pay-confirm-btn {
-      padding: 3px 10px; background: #16A34A; color: #fff;
+      min-height: 48px; padding: 8px 14px; background: #16A34A; color: #fff;
       border: none; border-radius: 7px;
       font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap;
     }
@@ -589,7 +604,7 @@
     .paym-btn.transfer { border-color: #93C5FD; color: #1D4ED8; background: #EFF6FF; }
     .paym-note { font-size: 0.72rem; color: #9CA3AF; line-height: 1.5; margin-bottom: 14px; }
     .paym-cancel {
-      width: 100%; padding: 10px; border: none; background: #F3F4F6;
+      width: 100%; min-height: 48px; padding: 10px; border: none; background: #F3F4F6;
       border-radius: 10px; font-size: 0.85rem; font-weight: 700; color: #6B7280; cursor: pointer;
     }
 
@@ -616,6 +631,7 @@
     <span class="header-title" id="headerTitle">대연마루</span>
     <span class="live-dot" id="liveDot" style="display:none"></span>
     <span class="sync-pill local" id="syncPill" title="">…</span>
+    <button class="sound-btn" id="soundBtn" onclick="enableChime(true)" title="새 주문 알림음을 켜고 테스트합니다">🔔 알림음 켜기</button>
   </div>
   <div class="header-right" id="headerRight">
     <span class="header-badge" id="customerBadge">손님 미선택</span>
@@ -745,7 +761,7 @@
 
 <!-- 직원 주문 결제수단 선택 -->
 <div class="paym-modal hidden" id="payMethodModal">
-  <div class="paym-box">
+  <div class="paym-box" role="dialog" aria-modal="true" aria-label="결제수단 선택" tabindex="-1">
     <h3>결제수단을 선택해 주세요</h3>
     <div class="paym-sub" id="paymSub">—</div>
     <div class="paym-btns">
@@ -853,11 +869,38 @@ function notifyNewKioskOrders() {
 
 /* 짧은 2음 알림음 — 외부 파일 없이 WebAudio로 만든다 (실패해도 조용히 넘어간다) */
 let chimeCtx = null;
+/* 브라우저 자동재생 정책: 사용자 조작 전에는 AudioContext가 suspended로 막힌다(QA-12).
+   첫 터치/클릭에서 깨우고, 상단 「🔔 알림음 켜기」 버튼으로 상태 확인·테스트할 수 있게 한다 */
+function enableChime(test) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) { updateSoundBtn(); return; }
+    chimeCtx = chimeCtx || new Ctx();
+    chimeCtx.onstatechange = updateSoundBtn;
+    const done = () => { updateSoundBtn(); if (test) playOrderChime(); };
+    if (chimeCtx.state === "suspended") chimeCtx.resume().then(done).catch(updateSoundBtn);
+    else done();
+  } catch (e) { /* 알림음은 보조 기능 */ }
+  updateSoundBtn();
+}
+function updateSoundBtn() {
+  const btn = document.getElementById("soundBtn");
+  if (!btn) return;
+  const on = !!(chimeCtx && chimeCtx.state === "running");
+  btn.textContent = on ? "🔔 ✓" : "🔔 알림음 켜기";
+  btn.classList.toggle("on", on);
+  btn.title = on ? "알림음 켜짐 — 누르면 테스트 소리가 납니다" : "새 주문 알림음을 켜고 테스트합니다";
+}
+document.addEventListener("pointerdown", function firstGesture() {
+  document.removeEventListener("pointerdown", firstGesture, true);
+  enableChime(false);
+}, true);
 function playOrderChime() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
     chimeCtx = chimeCtx || new Ctx();
+    chimeCtx.onstatechange = updateSoundBtn;
     if (chimeCtx.state === "suspended") chimeCtx.resume();
     const t0 = chimeCtx.currentTime;
     [[880, 0], [1318.5, 0.18]].forEach(([freq, dt]) => {
@@ -1102,7 +1145,7 @@ function renderNumGrid() {
   for (let i = 1; i <= NUM_MAX; i++) {
     const b = document.createElement("button");
     b.className = "num-btn" + (i === nextNum ? " sel" : "");
-    b.innerHTML = busy.has(i) ? `${i}<span class="num-busy-lbl">사용중</span>` : i;
+    b.innerHTML = busy.has(i) ? `${i}<span class="num-busy-lbl">사용 중</span>` : i;
     if (busy.has(i)) { b.disabled = true; b.title = "진행 중 주문이 쓰는 번호"; }
     b.onclick = () => pickNum(i);
     numGrid.appendChild(b);
@@ -1256,20 +1299,47 @@ function toggleCart() {
 
 let submitting = false;
 
-/* 「주문하기」 → 결제수단(현금/계좌이체)을 먼저 고른 뒤 저장한다 */
+/* 「주문하기」 → 결제수단(현금/계좌이체)을 먼저 고른 뒤 저장한다.
+   모달 접근성(QA-09): 열릴 때 포커스 이동·배경 inert, Tab 가두기, Esc 닫기, 닫으면 원래 자리로 */
+let paymOpener = null;
+function setPaymBackgroundInert(on) {
+  const modal = document.getElementById("payMethodModal");
+  [...document.body.children].forEach(el => {
+    if (el === modal || el.tagName === "SCRIPT" || el.id === "toast") return;
+    if (on) { el.inert = true; el.setAttribute("aria-hidden", "true"); }
+    else { el.inert = false; el.removeAttribute("aria-hidden"); }
+  });
+}
 function submitOrder() {
   if (!cart.length || submitting) return;
   const total = cart.reduce((s, c) => s + c.price * c.qty, 0);
   document.getElementById("paymSub").textContent = `손님 #${custNum} · 합계 ${total.toLocaleString("ko-KR")}원`;
+  paymOpener = document.activeElement;
   document.getElementById("payMethodModal").classList.remove("hidden");
+  setPaymBackgroundInert(true);
+  document.querySelector("#payMethodModal .paym-box").focus();
 }
 function closePayMethodModal() {
   document.getElementById("payMethodModal").classList.add("hidden");
+  setPaymBackgroundInert(false);
+  if (paymOpener && paymOpener.isConnected && paymOpener.focus) paymOpener.focus();
+  paymOpener = null;
 }
 function choosePayMethod(method) {
   closePayMethodModal();
   submitOrderWith(method);
 }
+document.addEventListener("keydown", e => {
+  const modal = document.getElementById("payMethodModal");
+  if (modal.classList.contains("hidden")) return;
+  if (e.key === "Escape") { e.preventDefault(); closePayMethodModal(); return; }
+  if (e.key !== "Tab") return;
+  const items = [...modal.querySelectorAll("button")].filter(b => !b.disabled);
+  if (!items.length) { e.preventDefault(); return; }
+  const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+});
 
 let pendingClientOrderId = null;   // 접수 시도마다 고정되는 주문 키 — 실패 후 재시도에 같은 키를 써서 중복 접수를 막는다
 let serverHasAddOrder = true;      // 서버가 v2(addOrder 지원)인지 — 아니라고 확인되면 기존 방식(재확인+add)으로만 저장한다
@@ -1551,7 +1621,8 @@ function updateKNavBadge() {
 }
 
 /* ══════════ HISTORY SCREEN ══════════ */
-/* 결제수단별 매출 합계 (키오스크·직원 주문 공통). payMethod가 없는 기존 주문은 「미지정」 */
+/* 결제수단별 매출 합계 (키오스크·직원 주문 공통). payMethod가 없는 기존 주문은 「미지정」.
+   payStatus와 무관한 「주문 기준」 집계다 — 수납액은 payStatusTotals로 따로 센다(S-04) */
 function payTotals(orders) {
   const t = { transfer: 0, cash: 0, none: 0 };
   orders.forEach(o => {
@@ -1560,6 +1631,19 @@ function payTotals(orders) {
   });
   return t;
 }
+/* payStatus 기준 수납 집계 — 결제확인 완료 금액/미결제 금액 (S-04). payStatus 없는 과거 주문은 제외 */
+function payStatusTotals(orders) {
+  const t = { paid: 0, unpaid: 0 };
+  orders.forEach(o => {
+    if (o.payStatus === "paid") t.paid += o.total || 0;
+    else if (o.payStatus === "unpaid") t.unpaid += o.total || 0;
+  });
+  return t;
+}
+/* 메뉴명 → 카테고리 (저장된 주문 항목에는 cat이 없어 이름으로 찾는다).
+   메뉴에 없는 이름은 음료로 센다 — 잔 수 집계(QA-10)용 */
+const MENU_CAT = {};
+MENU.forEach(m => { MENU_CAT[m.name] = m.cat; });
 
 /* Local YYYY-MM-DD key for an ISO timestamp (groups orders by calendar day) */
 function dayKey(ts) {
@@ -1668,15 +1752,18 @@ function renderHistory() {
   const pend = dateSet.filter(o=>o.orderStatus==="pending").length;
   const avg  = dateSet.length ? Math.round(rev/dateSet.length) : 0;
   const payT = payTotals(dateSet);
+  const payS = payStatusTotals(dateSet);
   document.getElementById("summaryRow").innerHTML = `
     <div class="sum-card"><div class="sum-lbl">총 주문</div><div class="sum-val purple">${dateSet.length}</div></div>
-    <div class="sum-card"><div class="sum-lbl">매출</div><div class="sum-val green">${rev.toLocaleString("ko-KR")}원</div></div>
+    <div class="sum-card"><div class="sum-lbl">매출 (주문 기준)</div><div class="sum-val green">${rev.toLocaleString("ko-KR")}원</div></div>
     <div class="sum-card"><div class="sum-lbl">완료</div><div class="sum-val green">${done}</div></div>
     <div class="sum-card"><div class="sum-lbl">대기</div><div class="sum-val orange">${pend}</div></div>
     <div class="sum-card"><div class="sum-lbl">평균</div><div class="sum-val blue">${avg.toLocaleString("ko-KR")}원</div></div>
-    <div class="sum-card"><div class="sum-lbl">🏦 계좌이체</div><div class="sum-val blue">${payT.transfer.toLocaleString("ko-KR")}원</div></div>
-    <div class="sum-card"><div class="sum-lbl">💵 현금</div><div class="sum-val orange">${payT.cash.toLocaleString("ko-KR")}원</div></div>
-    <div class="sum-card"><div class="sum-lbl">결제수단 미지정</div><div class="sum-val purple">${payT.none.toLocaleString("ko-KR")}원</div></div>`;
+    <div class="sum-card"><div class="sum-lbl">🏦 계좌이체 (주문 기준)</div><div class="sum-val blue">${payT.transfer.toLocaleString("ko-KR")}원</div></div>
+    <div class="sum-card"><div class="sum-lbl">💵 현금 (주문 기준)</div><div class="sum-val orange">${payT.cash.toLocaleString("ko-KR")}원</div></div>
+    <div class="sum-card"><div class="sum-lbl">결제수단 미지정 (주문 기준)</div><div class="sum-val purple">${payT.none.toLocaleString("ko-KR")}원</div></div>
+    <div class="sum-card"><div class="sum-lbl">결제확인 완료 금액</div><div class="sum-val green">${payS.paid.toLocaleString("ko-KR")}원</div></div>
+    <div class="sum-card"><div class="sum-lbl">미결제 금액</div><div class="sum-val orange">${payS.unpaid.toLocaleString("ko-KR")}원</div></div>`;
 
   const hb = document.getElementById("hHeaderBadge");
   if (hb) hb.textContent = `총 ${dateSet.length}건`;
@@ -1775,16 +1862,21 @@ function shortDay(key) {
   return `${m}/${d} (${w})`;
 }
 
-/* 한 달치 주문을 일자별·메뉴별로 집계한다 */
+/* 한 달치 주문을 일자별·메뉴별로 집계한다.
+   「…잔」은 음료만 센다 — 옵션(cat:"option")은 제외, 디저트는 「디저트 N개」로 따로(QA-10) */
 function monthStats(mk) {
   const orders = getOrders().filter(o => monthKey(o.timestamp) === mk);
   const dayMap = {}, menuMap = {};
+  let drinkQty = 0, dessertQty = 0;
   orders.forEach(o => {
     const dk = dayKey(o.timestamp);
     const d  = dayMap[dk] || (dayMap[dk] = { key: dk, cnt: 0, qty: 0, rev: 0 });
     d.cnt++; d.rev += o.total;
     o.items.forEach(it => {
       d.qty += it.qty;
+      const cat = MENU_CAT[it.name];
+      if (cat === "dessert")      dessertQty += it.qty;
+      else if (cat !== "option")  drinkQty   += it.qty;
       const r = menuMap[it.name] || (menuMap[it.name] = { name: it.name, qty: 0, rev: 0, ice: 0, hot: 0 });
       r.qty += it.qty;
       r.rev += it.price * it.qty;
@@ -1795,11 +1887,12 @@ function monthStats(mk) {
   const days  = Object.values(dayMap).sort((a, b) => a.key.localeCompare(b.key));
   const menus = Object.values(menuMap).sort((a, b) => b.rev - a.rev || b.qty - a.qty);
   return {
-    orders, days, menus,
+    orders, days, menus, drinkQty, dessertQty,
     totalRev: orders.reduce((s, o) => s + o.total, 0),
     totalQty: menus.reduce((s, r) => s + r.qty, 0),
     done:     orders.filter(o => o.orderStatus === "completed").length,
     payT:     payTotals(orders),
+    payS:     payStatusTotals(orders),
   };
 }
 
@@ -1857,16 +1950,21 @@ function buildMonthReport(mk) {
 
     <table class="pdf-kpi"><tr>
       <td><div class="pdf-kpi-l">총 주문</div><div class="pdf-kpi-v">${s.orders.length}건</div></td>
-      <td><div class="pdf-kpi-l">총 판매 수량</div><div class="pdf-kpi-v">${s.totalQty}잔</div></td>
+      <td><div class="pdf-kpi-l">총 판매 수량 (음료)</div><div class="pdf-kpi-v">${s.drinkQty}잔</div>${s.dessertQty ? `<div class="pdf-kpi-l" style="margin-top:3px">디저트 ${s.dessertQty}개</div>` : ""}</td>
       <td><div class="pdf-kpi-l">영업일수</div><div class="pdf-kpi-v">${s.days.length}일</div></td>
       <td><div class="pdf-kpi-l">일평균 매출</div><div class="pdf-kpi-v">${money(avgDay)}</div></td>
       <td><div class="pdf-kpi-l">건당 평균</div><div class="pdf-kpi-v">${money(avgOrd)}</div></td>
     </tr></table>
 
     <table class="pdf-kpi" style="margin-top:8px"><tr>
-      <td style="width:33.4%"><div class="pdf-kpi-l">🏦 계좌이체</div><div class="pdf-kpi-v">${money(s.payT.transfer)}</div></td>
-      <td style="width:33.3%"><div class="pdf-kpi-l">💵 현금</div><div class="pdf-kpi-v">${money(s.payT.cash)}</div></td>
-      <td style="width:33.3%"><div class="pdf-kpi-l">결제수단 미지정</div><div class="pdf-kpi-v">${money(s.payT.none)}</div></td>
+      <td style="width:33.4%"><div class="pdf-kpi-l">🏦 계좌이체 (주문 기준)</div><div class="pdf-kpi-v">${money(s.payT.transfer)}</div></td>
+      <td style="width:33.3%"><div class="pdf-kpi-l">💵 현금 (주문 기준)</div><div class="pdf-kpi-v">${money(s.payT.cash)}</div></td>
+      <td style="width:33.3%"><div class="pdf-kpi-l">결제수단 미지정 (주문 기준)</div><div class="pdf-kpi-v">${money(s.payT.none)}</div></td>
+    </tr></table>
+
+    <table class="pdf-kpi" style="margin-top:8px"><tr>
+      <td style="width:50%"><div class="pdf-kpi-l">결제확인 완료 금액 (payStatus 기준)</div><div class="pdf-kpi-v">${money(s.payS.paid)}</div></td>
+      <td style="width:50%"><div class="pdf-kpi-l">미결제 금액 (payStatus 기준)</div><div class="pdf-kpi-v">${money(s.payS.unpaid)}</div></td>
     </tr></table>
 
     <table class="pdf-cols"><tr>
@@ -2006,6 +2104,7 @@ document.getElementById("cartBody").addEventListener("click", e => {
 renderMenu();
 renderCart();
 updateKNavBadge();
+updateSoundBtn();
 
 if (Backend.cloud) {
   setSyncStatus("syncing");

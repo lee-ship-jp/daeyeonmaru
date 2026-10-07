@@ -119,10 +119,11 @@
     .ktop-logo  { font-size: 1.5rem; }
     .ktop-title { font-size: 1.2rem; font-weight: 800; flex: 1; }
     .ktop-btn {
-      min-height: 48px; padding: 8px 18px;
+      min-height: 64px; padding: 8px 18px;
       background: rgba(246,239,227,0.14); color: #F6EFE3;
       border: 1.5px solid rgba(246,239,227,0.4); border-radius: 12px;
       font-size: 0.95rem; font-weight: 700;
+      white-space: nowrap;   /* 폰에서 글자가 세로로 줄바꿈되지 않게 (QA-11) */
     }
 
     /* ═══ ② 번호 선택 ═══ */
@@ -163,7 +164,7 @@
     }
     .cat-tabs::-webkit-scrollbar { display: none; }
     .cat-tab {
-      flex-shrink: 0; min-height: 56px; padding: 8px 20px;
+      flex-shrink: 0; min-height: 64px; padding: 8px 20px;
       border-radius: 999px; border: 2px solid var(--wood-line);
       background: var(--wood-bg); color: var(--wood-mid);
       font-size: 1rem; font-weight: 800; white-space: nowrap;
@@ -209,7 +210,7 @@
     .kcart-head {
       display: flex; align-items: center; gap: 10px;
       padding: 12px 18px; background: var(--green-pale);
-      border-bottom: 1px solid var(--green-light); min-height: 56px;
+      border-bottom: 1px solid var(--green-light); min-height: 64px;
     }
     .kcart-title { font-size: 1.05rem; font-weight: 800; color: var(--green-deep); }
     .kcart-cnt {
@@ -229,14 +230,14 @@
     .kline-sub  { font-size: 0.8rem; color: var(--wood-mid); margin-top: 2px; line-height: 1.45; }
     .kline-qty  { display: flex; align-items: center; gap: 4px; }
     .kline-qty button {
-      width: 44px; height: 44px; border-radius: 12px; border: none;
+      width: 64px; height: 64px; border-radius: 12px; border: none;
       background: var(--wood-bg); font-size: 1.3rem; font-weight: 800; color: var(--wood-dark);
     }
     .kline-qty button:active { background: var(--green-light); }
     .kline-qty .q { min-width: 32px; text-align: center; font-size: 1.1rem; font-weight: 900; }
     .kline-amt { font-size: 1rem; font-weight: 900; color: var(--green-dark); white-space: nowrap; min-width: 74px; text-align: right; }
     .kline-del {
-      width: 44px; height: 44px; border: none; border-radius: 12px;
+      width: 64px; height: 64px; border: none; border-radius: 12px;
       background: transparent; color: #C9BBA3; font-size: 1.15rem;
     }
     .kline-del:active { background: #FEE2E2; color: var(--red); }
@@ -291,7 +292,7 @@
     .opt-qty .q { font-size: 1.7rem; font-weight: 900; min-width: 56px; text-align: center; }
     .opt-extra { display: flex; flex-direction: column; gap: 8px; }
     .opt-extra button {
-      min-height: 60px; border-radius: 14px; border: 2px solid var(--wood-line);
+      min-height: 64px; border-radius: 14px; border: 2px solid var(--wood-line);
       background: #fff; font-size: 1.02rem; font-weight: 700; color: var(--wood-dark);
       display: flex; align-items: center; justify-content: space-between; padding: 0 16px;
     }
@@ -397,17 +398,32 @@
       pointer-events: none;
     }
     .toast.show { opacity: 1; }
+
+    /* ═══ 375px급 폰 (QA-08·QA-11) ═══
+       상단 버튼은 축약해 한 줄을 유지하고, 번호는 4열(가로 64px 이상),
+       장바구니 줄은 이름/조작부를 두 단으로 나눠 64px 버튼이 들어가게 한다 */
+    @media (max-width: 480px) {
+      .ktop { padding: 10px 12px; gap: 8px; }
+      .ktop-logo  { font-size: 1.15rem; }
+      .ktop-title { font-size: 1.05rem; }
+      .ktop-btn   { padding: 8px 10px; font-size: 0.85rem; }
+      .chip-num   { padding: 6px 10px; font-size: 0.95rem; }
+      .numgrid    { grid-template-columns: repeat(4, 1fr); }
+      .kline      { flex-wrap: wrap; }
+      .kline-info { flex: 1 1 100%; }
+      .kline-amt  { margin-left: auto; min-width: 0; }
+    }
   </style>
 </head>
 <body>
 
 <!-- ══════════ ① 대기 화면 ══════════ -->
-<div id="screen-idle" class="kscreen active" onclick="wakeFromIdle()">
+<div id="screen-idle" class="kscreen active" onclick="wakeFromIdle()" tabindex="0" role="button" aria-label="주문 시작 — 화면을 터치하거나 Enter를 눌러 주세요">
   <div class="idle-logo">☕</div>
   <div class="idle-title">CAFE 대연마루</div>
   <div class="idle-sub">여러분께서 드신 음료의 모든 수익금은 교회 헌금으로 사용됩니다</div>
   <div class="idle-reco" id="idleReco"></div>
-  <div class="idle-touch">👆 주문을 원하시면 화면을 터치해주세요</div>
+  <div class="idle-touch">👆 주문을 원하시면 화면을 터치해 주세요</div>
   <div class="idle-note">결제는 계좌이체 또는 카운터 현금으로 받습니다 (카드 불가)</div>
 </div>
 
@@ -433,7 +449,7 @@
 <div id="screen-menu" class="kscreen">
   <div class="ktop">
     <span class="ktop-logo">☕</span>
-    <span class="chip-num" id="menuNumChip">선택 번호 —번</span>
+    <span class="chip-num" id="menuNumChip">주문번호 —번</span>
     <button class="ktop-btn" onclick="goNumber()">번호 변경</button>
     <span style="flex:1"></span>
     <button class="ktop-btn" onclick="confirmGoIdle()">처음으로</button>
@@ -554,12 +570,12 @@
 
 <!-- 옵션 모달 -->
 <div class="kmodal-bg" id="optModalBg">
-  <div class="kmodal" id="optModal"></div>
+  <div class="kmodal" id="optModal" role="dialog" aria-modal="true" aria-label="메뉴 옵션 선택" tabindex="-1"></div>
 </div>
 
 <!-- 범용 다이얼로그 -->
 <div class="kmodal-bg" id="dlgBg">
-  <div class="dlg" id="dlgBox"></div>
+  <div class="dlg" id="dlgBox" role="dialog" aria-modal="true" aria-label="안내" tabindex="-1"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -627,6 +643,46 @@ function copyAccount() {
 document.addEventListener("contextmenu", e => e.preventDefault());
 document.addEventListener("gesturestart", e => e.preventDefault());
 document.addEventListener("dblclick", e => e.preventDefault());
+
+/* ═══════════ 모달 접근성 (QA-09) ═══════════
+   모달이 열리면 포커스를 안으로 옮기고 Tab을 안에 가둔다. Esc로 닫고,
+   닫히면 열었던 요소로 포커스를 되돌린다. 열려 있는 동안 배경은 inert/aria-hidden. */
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+const modalStack = [];   // [{ bgId, opener, onEsc }] — 옵션 모달 위에 다이얼로그가 겹칠 수 있다
+function syncModalInert() {
+  const top = modalStack[modalStack.length - 1];
+  [...document.body.children].forEach(el => {
+    if (el.tagName === "SCRIPT" || el.id === "toast") return;
+    if (top && el.id !== top.bgId) { el.inert = true; el.setAttribute("aria-hidden", "true"); }
+    else { el.inert = false; el.removeAttribute("aria-hidden"); }
+  });
+}
+function modalOpened(bgId, onEsc) {
+  if (!modalStack.some(m => m.bgId === bgId))
+    modalStack.push({ bgId, opener: document.activeElement, onEsc });
+  syncModalInert();
+  const box = document.getElementById(bgId).querySelector('[role="dialog"]');
+  if (box) box.focus();
+}
+function modalClosed(bgId) {
+  const idx = modalStack.findIndex(m => m.bgId === bgId);
+  if (idx < 0) return;
+  const [m] = modalStack.splice(idx, 1);
+  syncModalInert();
+  if (m.opener && m.opener.isConnected && m.opener.focus) m.opener.focus();
+}
+document.addEventListener("keydown", e => {
+  if (!modalStack.length) return;
+  const top = modalStack[modalStack.length - 1];
+  const bg  = document.getElementById(top.bgId);
+  if (e.key === "Escape") { e.preventDefault(); if (top.onEsc) top.onEsc(); return; }
+  if (e.key !== "Tab") return;
+  const items = [...bg.querySelectorAll(FOCUSABLE)].filter(el => !el.disabled && el.offsetParent !== null);
+  if (!items.length) { e.preventDefault(); return; }
+  const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && (document.activeElement === first || !bg.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (document.activeElement === last || !bg.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+});
 
 /* ═══════════ 백엔드 (index.html과 같은 구조 — 복제본) ═══════════ */
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwMDteZephpg3wm_m8pObKpEDgMtXh42tG0lmF1bA2MZ5wN22zw3smbO-UFFeosu_MEJQ/exec";
@@ -837,6 +893,30 @@ function goIdle() {
   showScreen("idle");
 }
 function wakeFromIdle() { goNumber(); }
+/* 대기 화면을 키보드로도 시작할 수 있게 (QA-09) */
+document.getElementById("screen-idle").addEventListener("keydown", e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); wakeFromIdle(); }
+});
+
+/* ═══════════ 안드로이드 시스템 뒤로가기 가드 (S-05) ═══════════
+   가드용 history 항목을 한 칸 쌓아 두고, 뒤로가기(popstate)가 오면 앱을 떠나는 대신
+   다시 한 칸을 쌓은 뒤 화면 한 단계만 되돌린다. 대기 화면에서는 무시한다. */
+try { history.replaceState({ kiosk: true }, ""); history.pushState({ kioskGuard: true }, ""); } catch (e) {}
+window.addEventListener("popstate", () => {
+  try { history.pushState({ kioskGuard: true }, ""); } catch (e) {}
+  backOneStep();
+});
+function backOneStep() {
+  if (saving) return;                       // 저장 중에는 화면을 건드리지 않는다
+  if (dlgIsOpen()) { dlgEsc(); return; }
+  if (document.getElementById("optModalBg").classList.contains("open")) { closeOptModal(); return; }
+  if (screen === "number")   { confirmGoIdle(); return; }
+  if (screen === "menu")     { goNumber(); return; }
+  if (screen === "pay")      { goMenu(); return; }
+  if (screen === "transfer" || screen === "cash") { goPay(); return; }
+  if (screen === "done")     { goIdle(); return; }
+  /* idle: 무시 */
+}
 function confirmGoIdle() {
   if (!cart.length) { goIdle(); return; }
   showDlg({
@@ -854,7 +934,7 @@ function goNumber() {
   Backend.refresh();   // 진행 중 주문(사용 중 번호)을 최신으로
 }
 function goMenu() {
-  document.getElementById("menuNumChip").textContent = `선택 번호 ${custNum}번`;
+  document.getElementById("menuNumChip").textContent = `주문번호 ${custNum}번`;
   showScreen("menu");
 }
 function goPay() {
@@ -964,19 +1044,22 @@ function openOptModal(menuId) {
   optState = { menuId, temp: m.hasTemp ? "ice" : null, qty: 1, opts: new Set() };
   renderOptModal();
   document.getElementById("optModalBg").classList.add("open");
+  modalOpened("optModalBg", closeOptModal);
 }
 function closeOptModal() {
   optState = null;
   document.getElementById("optModalBg").classList.remove("open");
+  modalClosed("optModalBg");
 }
 function renderOptModal() {
   if (!optState) return;
+  const prevFocusId = document.activeElement ? document.activeElement.id : null;   // 재렌더 후 포커스 복원용 (QA-09)
   const m = MENU.find(x => x.id === optState.menuId);
   const tempHTML = m.hasTemp ? `
     <div class="opt-sec-lbl">온도 선택</div>
     <div class="opt-temp">
-      <button class="ice ${optState.temp === "ice" ? "active" : ""}" data-temp="ice">🧊 ICE</button>
-      <button class="hot ${optState.temp === "hot" ? "active" : ""}" data-temp="hot">🔥 HOT</button>
+      <button class="ice ${optState.temp === "ice" ? "active" : ""}" id="optTempIce" data-temp="ice">🧊 ICE</button>
+      <button class="hot ${optState.temp === "hot" ? "active" : ""}" id="optTempHot" data-temp="hot">🔥 HOT</button>
     </div>` : "";
   const extras = EXTRA_CATS.includes(m.cat) ? MENU.filter(x => x.cat === "option") : [];
   const extraHTML = extras.length ? `
@@ -1000,15 +1083,20 @@ function renderOptModal() {
     ${tempHTML}
     <div class="opt-sec-lbl">수량</div>
     <div class="opt-qty">
-      <button data-qd="-1">−</button>
+      <button id="optQtyMinus" data-qd="-1" aria-label="수량 줄이기">−</button>
       <span class="q" id="optQtyVal">${optState.qty}</span>
-      <button id="optQtyPlus" data-qd="1">+</button>
+      <button id="optQtyPlus" data-qd="1" aria-label="수량 늘리기">+</button>
     </div>
     ${extraHTML}
     <div class="opt-foot">
-      <button class="big-btn ghost cancel" data-act="cancel">취소</button>
+      <button class="big-btn ghost cancel" id="optCancel" data-act="cancel">취소</button>
       <button class="big-btn green add" id="optAdd" data-act="add">담기 · ${won(unit * optState.qty)}</button>
     </div>`;
+  /* 키보드 조작으로 다시 그려져도 포커스가 모달 밖(body)으로 떨어지지 않게 한다 */
+  if (document.getElementById("optModalBg").classList.contains("open")) {
+    const el = prevFocusId ? document.getElementById(prevFocusId) : null;
+    (el && !el.disabled ? el : document.getElementById("optModal")).focus();
+  }
 }
 function optSetTemp(t) { if (optState) { optState.temp = t; renderOptModal(); } }
 function optQty(d)     { if (optState) { optState.qty = Math.min(99, Math.max(1, optState.qty + d)); renderOptModal(); } }
@@ -1064,12 +1152,12 @@ function renderCart() {
             ${sub ? `<div class="kline-sub">${esc(sub)}</div>` : ""}
           </div>
           <div class="kline-qty">
-            <button data-uid="${Number(g.uid)}" data-qd="-1">−</button>
+            <button data-uid="${Number(g.uid)}" data-qd="-1" aria-label="${esc(g.name)} 수량 줄이기">−</button>
             <span class="q">${g.qty}</span>
-            <button data-uid="${Number(g.uid)}" data-qd="1">+</button>
+            <button data-uid="${Number(g.uid)}" data-qd="1" aria-label="${esc(g.name)} 수량 늘리기">+</button>
           </div>
           <span class="kline-amt">${(groupUnitPrice(g) * g.qty).toLocaleString("ko-KR")}원</span>
-          <button class="kline-del" data-del="${Number(g.uid)}">✕</button>
+          <button class="kline-del" data-del="${Number(g.uid)}" aria-label="${esc(g.name)} 삭제">✕</button>
         </div>`;
       }).join("");
 }
@@ -1257,26 +1345,47 @@ function showDlg({ icon, title, body, count, buttons }) {
     </div>`;
   buttons.forEach((b, i) => { document.getElementById(`dlgBtn${i}`).onclick = b.onClick; });
   document.getElementById("dlgBg").classList.add("open");
+  modalOpened("dlgBg", dlgEsc);
 }
 function closeDlg() {
   clearInterval(dlgCountTimer);
   document.getElementById("dlgBg").classList.remove("open");
+  modalClosed("dlgBg");
 }
 function dlgIsOpen() { return document.getElementById("dlgBg").classList.contains("open"); }
+/* Esc·뒤로가기 시 다이얼로그 처리 — 취소(ghost) 버튼이 있으면 그걸, 없으면 첫 버튼을 누른 것으로 */
+function dlgEsc() {
+  const box = document.getElementById("dlgBox");
+  const btn = box.querySelector(".big-btn.ghost") || box.querySelector("button");
+  if (btn) btn.click(); else closeDlg();
+}
 
-/* ═══════════ 무입력 타이머: 60초 → 「계속 주문하시겠어요?」 10초 카운트다운 ═══════════ */
+/* ═══════════ 무입력 타이머 ═══════════
+   기본: 60초 → 「계속 주문하시겠어요?」 10초 카운트다운.
+   계좌이체 화면(S-03): 손님이 휴대폰 뱅킹으로 이체하는 시간을 고려해 180초로 늘리고,
+   만료 시에도 바로 초기화하지 않고 「이체했어요」 확인을 30초 더 보여준다. */
 const IDLE_MS = 60000, ASK_SECONDS = 10;
+const TRANSFER_IDLE_MS = 180000, TRANSFER_ASK_SECONDS = 30;
 let idleTimer = null;
 function armIdleTimer() {
   clearTimeout(idleTimer);
   if (saving) return;                                   // 저장 중에는 무입력 타이머를 걸지 않는다
   if (screen === "idle" || screen === "done") return;   // 완료 화면은 자체 타이머가 처리
-  idleTimer = setTimeout(askContinue, IDLE_MS);
+  idleTimer = setTimeout(askContinue, screen === "transfer" ? TRANSFER_IDLE_MS : IDLE_MS);
 }
 function askContinue() {
   if (screen === "idle" || screen === "done") return;
-  let remain = ASK_SECONDS;
-  showDlg({
+  const isTransfer = screen === "transfer";
+  let remain = isTransfer ? TRANSFER_ASK_SECONDS : ASK_SECONDS;
+  showDlg(isTransfer ? {
+    icon: "🏦", title: "이체를 마치셨다면 「이체했어요」를 눌러 주세요",
+    body: "입력이 없어 잠시 후 처음 화면으로 돌아갑니다.<br>아직 이체 중이시면 「계속 주문하기」를 눌러 주세요.",
+    count: remain,
+    buttons: [
+      { label: "계속 주문하기", cls: "ghost", onClick: () => { closeDlg(); armIdleTimer(); } },
+      { label: "이체했어요 · 주문 완료", cls: "green", onClick: () => { closeDlg(); finalizeOrder("transfer"); } },
+    ]
+  } : {
     icon: "⏰", title: "계속 주문하시겠어요?",
     body: "입력이 없어 잠시 후 처음 화면으로 돌아갑니다.",
     count: remain,
@@ -1289,8 +1398,9 @@ function askContinue() {
     if (remain <= 0) { closeDlg(); goIdle(); }
   }, 1000);
 }
-/* 터치가 있으면 타이머를 다시 센다 (카운트다운 중에는 버튼으로만 계속, 저장 중에는 걸지 않음) */
+/* 터치·키보드 입력이 있으면 타이머를 다시 센다 (카운트다운 중에는 버튼으로만 계속, 저장 중에는 걸지 않음) */
 document.addEventListener("pointerdown", () => { if (!dlgIsOpen() && !saving) armIdleTimer(); }, true);
+document.addEventListener("keydown",     () => { if (!dlgIsOpen() && !saving) armIdleTimer(); }, true);
 
 /* ═══════════ 이벤트 위임 — 인라인 onclick에 데이터가 섞이지 않게 data-속성으로 처리 ═══════════ */
 document.getElementById("catTabs").addEventListener("click", e => {
